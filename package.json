@@ -1,0 +1,67 @@
+{
+  "name": "dolphino-pos",
+  "version": "1.0.0",
+  "description": "Système de caisse Dolphino Restaurant & Fast Food",
+  "main": "main.js",
+  "author": "Dolphino Tunisie",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "tn.dolphino.pos",
+    "productName": "Dolphino POS",
+    "copyright": "© 2025 Dolphino Restaurant",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "database.js",
+      "preload.js",
+      "index.html",
+      "node_modules/sql.js/dist/**"
+    ],
+    "asarUnpack": [
+      "node_modules/sql.js/dist/**"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dolphino POS"
+    },
+    "portable": {
+      "artifactName": "DolphinoPOS-portable.exe"
+    }
+  }
+}
