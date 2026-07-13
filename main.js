@@ -121,28 +121,44 @@ ipcMain.handle('db-get-status', async () => {
 });
 
 ipcMain.on('print-receipt', (event, htmlContent) => {
+  // Inject @page 80mm CSS to fix thermal printer paper width
+  const printCSS = `<style>
+    @page { size: 80mm auto; margin: 0mm; }
+    html, body { width: 72mm; max-width: 72mm; margin: 0; padding: 2mm; }
+  </style>`;
+  const fixedHtml = htmlContent.replace('</head>', printCSS + '</head>');
+
+  // Write to temp file — data: URLs cause blank prints in some Electron versions
+  const tmpFile = path.join(os.tmpdir(), 'dolphino_print_' + Date.now() + '.html');
+  fs.writeFileSync(tmpFile, fixedHtml, 'utf8');
+
   const printWin = new BrowserWindow({
-    width: 400,
+    width: 302, // 80mm at 96dpi
     height: 800,
     show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
-  printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
+
+  printWin.loadFile(tmpFile);
+
   printWin.webContents.once('did-finish-load', () => {
-    // Wait for full render before printing — prevents blank page
     setTimeout(() => {
       printWin.webContents.print(
         {
           silent: true,
-          printBackground: true,
-          margins: { marginType: 'printableArea' },
+          printBackground: false,
+          margins: { marginType: 'none' },
+          pageSize: { width: 80000, height: 297000 }, // 80mm wide, auto height in microns
         },
         (success, errorType) => {
           if (!success) console.error('Print failed:', errorType);
-          setTimeout(() => printWin.close(), 500);
+          setTimeout(() => {
+            printWin.close();
+            try { fs.unlinkSync(tmpFile); } catch(e) {}
+          }, 500);
         }
       );
-    }, 800);
+    }, 600);
   });
 });
 
