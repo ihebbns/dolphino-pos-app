@@ -140,25 +140,56 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
 });
 
 // ── CASH DRAWER (XP-80T via RJ11 cable) ───────────────────────────────
-// Sends ESC p pulse bytes directly to the default printer via Windows raw print
+// Uses Windows WritePrinter API via PowerShell — no printer sharing needed
 ipcMain.handle('open-cash-drawer', async () => {
   return new Promise((resolve) => {
     try {
-      // ESC p 0 50 250 — standard cash drawer pulse for XP-80T
-      const bytes = Buffer.from([0x1B, 0x70, 0x00, 0x32, 0xFA]);
-      const tmpFile = path.join(os.tmpdir(), 'dolphino_drawer.bin');
-      fs.writeFileSync(tmpFile, bytes);
-
-      // Use PowerShell to get the first available printer and send raw bytes
       const ps = [
         '-NoProfile', '-NonInteractive', '-Command',
-        // Get first printer name (XP-80T or any USB/POS printer first)
-        `$p = (Get-Printer | Sort-Object {$_.Name -match 'XP|80|POS|Thermal|printer'} -Descending | Select-Object -First 1).Name;` +
-        `if ($p) { cmd /c "copy /b \\"${tmpFile.replace(/\\/g, '\\\\')}\\" \\"\\\\\\\\localhost\\\\$p\\" > nul 2>&1"; Write-Host "OK: $p" } else { Write-Host "NO_PRINTER" }`
+        // Find XP-80T or first available printer, send ESC p pulse via WritePrinter
+        `Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class RawPrint {
+  [DllImport("winspool.drv", CharSet=CharSet.Auto, SetLastError=true)]
+  public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool StartDocPrinter(IntPtr h, int l, ref DOCINFO d);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)]
+  public static extern bool ClosePrinter(IntPtr h);
+  [StructLayout(LayoutKind.Sequential)] public struct DOCINFO {
+    [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+  }
+}
+'@ -ErrorAction SilentlyContinue;
+$p = (Get-Printer | Where-Object {$_.Name -match 'XP|80|POS|Thermal'} | Select-Object -First 1).Name;
+if (-not $p) { $p = (Get-Printer | Select-Object -First 1).Name };
+if (-not $p) { Write-Host 'NO_PRINTER'; exit };
+$bytes = [byte[]](0x1B,0x70,0x00,0x32,0xFA);
+$hPrinter = [IntPtr]::Zero;
+[RawPrint]::OpenPrinter($p, [ref]$hPrinter, [IntPtr]::Zero) | Out-Null;
+$doc = New-Object RawPrint+DOCINFO; $doc.pDocName='CashDrawer'; $doc.pDataType='RAW';
+[RawPrint]::StartDocPrinter($hPrinter,1,[ref]$doc) | Out-Null;
+[RawPrint]::StartPagePrinter($hPrinter) | Out-Null;
+$written=0; [RawPrint]::WritePrinter($hPrinter,$bytes,$bytes.Length,[ref]$written) | Out-Null;
+[RawPrint]::EndPagePrinter($hPrinter) | Out-Null;
+[RawPrint]::EndDocPrinter($hPrinter) | Out-Null;
+[RawPrint]::ClosePrinter($hPrinter) | Out-Null;
+Write-Host "OK:$p bytes:$written"`
       ];
 
-      execFile('powershell', ps, { timeout: 6000 }, (err, stdout) => {
-        const ok = !err && stdout && !stdout.includes('NO_PRINTER');
+      execFile('powershell', ps, { timeout: 8000 }, (err, stdout) => {
+        const ok = !err && stdout && stdout.includes('OK:');
         console.log('[CashDrawer]', stdout?.trim() || err?.message);
         resolve({ ok, log: stdout?.trim() });
       });
