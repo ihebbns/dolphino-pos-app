@@ -130,7 +130,7 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
   printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
   printWin.webContents.once('did-finish-load', () => {
     printWin.webContents.print(
-      { silent: false, printBackground: true, margins: { marginType: 'printableArea' } },
+      { silent: true, printBackground: true, margins: { marginType: 'printableArea' } },
       (success, errorType) => {
         if (!success) console.error('Print failed:', errorType);
         printWin.close();
@@ -169,12 +169,6 @@ ipcMain.handle('open-cash-drawer', async () => {
   });
 });
 
-    } catch (e) {
-      console.error('Cash drawer error:', e);
-      resolve({ ok: false, error: e.message });
-    }
-  });
-});
 
 app.whenReady().then(() => {
   getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));

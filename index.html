@@ -1419,8 +1419,12 @@ function autoPrintKitchen(od){
   const zone2Items = od.items.filter(it => !isBoisson(it) && ZONE2_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c));
 
   function printWindow(html){
-    const w=window.open('','_blank','width=350,height=520');
-    if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
+    if(window.electronAPI?.printReceipt){
+      window.electronAPI.printReceipt(html);
+    }else{
+      const w=window.open('','_blank','width=350,height=520');
+      if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
+    }
   }
 
   // Client ticket (doPrint) is fired first and finishes around ~400-600ms.
@@ -1506,8 +1510,12 @@ function doPrint(){
   <div class="d"></div>
   <div class="c sm">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez Dolphino</div>
   </body></html>`;
-  const w=window.open('','_blank','width=350,height=600');
-  if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
+  if(window.electronAPI?.printReceipt){
+    window.electronAPI.printReceipt(html);
+  }else{
+    const w=window.open('','_blank','width=350,height=600');
+    if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
+  }
 }
 
 function newOrd(){
