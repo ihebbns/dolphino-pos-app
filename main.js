@@ -123,19 +123,26 @@ ipcMain.handle('db-get-status', async () => {
 ipcMain.on('print-receipt', (event, htmlContent) => {
   const printWin = new BrowserWindow({
     width: 400,
-    height: 600,
+    height: 800,
     show: false,
-    webPreferences: { nodeIntegration: false },
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
   printWin.webContents.once('did-finish-load', () => {
-    printWin.webContents.print(
-      { silent: true, printBackground: true, margins: { marginType: 'printableArea' } },
-      (success, errorType) => {
-        if (!success) console.error('Print failed:', errorType);
-        printWin.close();
-      }
-    );
+    // Wait for full render before printing — prevents blank page
+    setTimeout(() => {
+      printWin.webContents.print(
+        {
+          silent: true,
+          printBackground: true,
+          margins: { marginType: 'printableArea' },
+        },
+        (success, errorType) => {
+          if (!success) console.error('Print failed:', errorType);
+          setTimeout(() => printWin.close(), 500);
+        }
+      );
+    }, 800);
   });
 });
 
