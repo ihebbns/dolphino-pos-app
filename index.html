@@ -268,6 +268,13 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .mm-price-field{flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;}
 .mm-price-field:focus{border-color:var(--gold);}
 
+/* ── REMOTE LOCK ── */
+#remote-lock{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(224,82,82,.12),transparent 60%),var(--bg);z-index:999;display:none;align-items:center;justify-content:center;}
+.remote-lock-box{background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.remote-lock-icon{font-size:56px;margin-bottom:12px;}
+.remote-lock-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--red);margin-bottom:14px;}
+.remote-lock-msg{font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;}
+
 /* ── SESSION CAISSE ── */
 .session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
 .session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
@@ -301,6 +308,15 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 </style>
 </head>
 <body>
+
+<!-- ══ REMOTE LOCK ══ -->
+<div id="remote-lock">
+  <div class="remote-lock-box">
+    <div class="remote-lock-icon">🔒</div>
+    <div class="remote-lock-title">Application Suspendue</div>
+    <div class="remote-lock-msg" id="remote-lock-msg">Veuillez contacter le développeur.</div>
+  </div>
+</div>
 
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
@@ -1956,6 +1972,37 @@ function showHistorique(){
 // ═══════════════ UTILS ═══════════════
 function f(n){return Number(n).toFixed(3);}
 function flash(m){const el=document.getElementById('stm');if(el){el.textContent=m;setTimeout(()=>{el.textContent='✓ Prêt';},2500);}}
+
+// ═══════════════ REMOTE LICENSE CHECK ═══════════════
+const CHECK_URL = SYNC_API_URL.replace('/api/sync', '/api/check');
+let licenseOk = true;
+
+async function checkLicense(){
+  if(!SYNC_ENABLED) return; // offline mode — skip check
+  try {
+    const res  = await fetch(CHECK_URL + '?key=' + SYNC_API_KEY, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+    if(data.ok && data.active === false){
+      // Suspend the app
+      licenseOk = false;
+      document.getElementById('remote-lock-msg').textContent = data.message || 'Contactez le développeur.';
+      document.getElementById('remote-lock').style.display   = 'flex';
+      document.getElementById('login-screen').style.display  = 'none';
+      document.getElementById('hdr').style.display           = 'none';
+      document.getElementById('main').style.display          = 'none';
+    } else if(data.active === true && !licenseOk){
+      // Reactivated — reload
+      licenseOk = true;
+      location.reload();
+    }
+  } catch(e) {
+    // No internet or server error — don't block the app
+  }
+}
+
+// Check on startup after 3 seconds, then every 30 minutes
+setTimeout(checkLicense, 3000);
+setInterval(checkLicense, 30 * 60 * 1000);
 
 // ═══════════════ THEME TOGGLE ═══════════════
 const THEME_KEY='dolphino-theme-v1';
