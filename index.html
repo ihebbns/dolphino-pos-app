@@ -262,6 +262,26 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .mm-price-field{flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;}
 .mm-price-field:focus{border-color:var(--gold);}
 
+/* ── SESSION CAISSE ── */
+.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+.session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.session-icon{font-size:44px;margin-bottom:8px;}
+.session-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
+.session-sub{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.6;}
+.session-input-row{display:flex;flex-direction:column;gap:6px;text-align:left;margin-bottom:16px;}
+.session-input-row label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.session-inp{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px 14px;color:var(--txt);font-size:20px;font-weight:700;outline:none;width:100%;text-align:center;}
+.session-inp:focus{border-color:var(--gold);}
+.session-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--div);font-size:13px;}
+.session-row:last-child{border-bottom:none;}
+.session-row span:last-child{font-weight:700;color:var(--gold-l);}
+.session-ecart-ok{color:var(--green) !important;}
+.session-ecart-warn{color:var(--red) !important;}
+.btn-session-open{width:100%;padding:14px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:9px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+.btn-session-open:hover{opacity:.9;}
+.btn-session-close{width:100%;padding:14px;background:linear-gradient(135deg,var(--red),#c44);border:none;border-radius:9px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+.session-badge-hdr{background:rgba(61,184,122,.15);border:1px solid rgba(61,184,122,.3);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--green);font-weight:600;}
+
 /* status */
 #sb{background:var(--panel);border-top:1px solid var(--div);padding:4px 16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);flex-shrink:0;}
 #dt{display:none;}
@@ -275,6 +295,13 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 </style>
 </head>
 <body>
+
+<!-- ══ SESSION CAISSE MODAL ══ -->
+<div class="session-modal-wrap" id="session-modal">
+  <div class="session-box" id="session-box-content">
+    <!-- content injected by JS -->
+  </div>
+</div>
 
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
@@ -330,6 +357,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-menu-manage" onclick="showMenuManage()" style="display:none">🛠️ Gérer le menu</button>
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
+    <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">💰 <span id="session-fond-display">—</span></div>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
   </div>
 </header>
@@ -673,12 +701,162 @@ const SYNC_API_KEY  = 'DOLPH-TEST-KEY-001'; // change per client
 
 // Queue for offline sales — sends when internet returns
 let syncQueue = JSON.parse(localStorage.getItem('dolphino-sync-queue') || '[]');
+let clotureQueue = JSON.parse(localStorage.getItem('dolphino-cloture-queue') || '[]');
 
 function saveQueue() {
   localStorage.setItem('dolphino-sync-queue', JSON.stringify(syncQueue));
 }
+function saveClotureQueue() {
+  localStorage.setItem('dolphino-cloture-queue', JSON.stringify(clotureQueue));
+}
 
-async function syncSale(od) {
+async function syncCloture(data) {
+  if (!SYNC_ENABLED) return;
+  const url = SYNC_API_URL.replace('/api/sync', '/api/cloture');
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (json.ok) {
+      // flush any queued clôtures too
+      flushClotureQueue();
+    }
+  } catch(e) {
+    // offline — queue for later
+    clotureQueue.push(data);
+    saveClotureQueue();
+  }
+}
+
+async function flushClotureQueue() {
+  if (!clotureQueue.length) return;
+  const url = SYNC_API_URL.replace('/api/sync', '/api/cloture');
+  const remaining = [];
+  for (const d of clotureQueue) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+        body: JSON.stringify(d)
+      });
+      const json = await res.json();
+      if (!json.ok) remaining.push(d);
+    } catch(e) {
+      remaining.push(d);
+    }
+  }
+  clotureQueue = remaining;
+  saveClotureQueue();
+}
+
+// ═══════════════════════════════════════════════════
+// CASH SESSION MANAGEMENT
+// Session persists across app restarts during same day
+// ═══════════════════════════════════════════════════
+const SESSION_KEY = 'dolphino-session-v1';
+let currentSession = null; // { id, fondInitial, openedAt, cashier, date }
+
+function f2(n){ return Number(n).toFixed(3); }
+
+function saveSessionToStorage(){
+  if(currentSession){
+    localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function loadSessionFromStorage(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    // Only restore if session is from today
+    if(s && s.date === todayKey()) return s;
+    localStorage.removeItem(SESSION_KEY); // stale session from previous day
+    return null;
+  }catch(e){ return null; }
+}
+
+async function showOpenCaisseModal(){
+  const box = document.getElementById('session-box-content');
+  box.innerHTML = `
+    <div class="session-icon">💰</div>
+    <div class="session-title">Ouverture de Caisse</div>
+    <div class="session-sub">Comptez l'argent dans le tiroir<br>et saisissez le fond de caisse initial.</div>
+    <div class="session-input-row">
+      <label>Fond de caisse (DT)</label>
+      <input class="session-inp" type="number" id="fond-inp" placeholder="0.000"
+        step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <button class="btn-session-open" onclick="confirmOpenCaisse()">✓ Ouvrir la caisse</button>
+  `;
+  document.getElementById('session-modal').style.display = 'flex';
+  setTimeout(() => { const i = document.getElementById('fond-inp'); if(i) i.focus(); }, 100);
+}
+
+async function confirmOpenCaisse(){
+  const fondVal = parseFloat(document.getElementById('fond-inp')?.value) || 0;
+  const now = new Date();
+  const sessionData = {
+    businessDate: todayKey(),
+    cashier: USERS[currentUser].name,
+    openedAt: now.toLocaleTimeString('fr-TN'),
+    fondInitial: fondVal,
+  };
+
+  let sessionId = null;
+  if (window.electronAPI?.saveSession) {
+    const res = await window.electronAPI.saveSession(sessionData);
+    if (res?.ok) sessionId = res.id;
+  }
+
+  currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: sessionData.cashier, date: todayKey() };
+  saveSessionToStorage();
+  document.getElementById('session-modal').style.display = 'none';
+
+  // Show fond badge in header
+  const badge = document.getElementById('session-badge-hdr');
+  const disp  = document.getElementById('session-fond-display');
+  if (badge && disp) {
+    disp.textContent = f2(fondVal) + ' DT';
+    badge.style.display = '';
+  }
+
+  flash('✅ Caisse ouverte — Fond: ' + f2(fondVal) + ' DT');
+}
+
+async function showSessions(){
+  if (!USERS[currentUser].isManager) { alert('Accès réservé au Manager.'); return; }
+  let sessions = [];
+  if (window.electronAPI?.getSessions) sessions = await window.electronAPI.getSessions() || [];
+
+  const box = document.getElementById('session-box-content');
+  const rows = sessions.slice(0, 10).map(s => {
+    const ecartColor = s.ecart === null ? '' :
+      (s.ecart >= 0 ? 'session-ecart-ok' : 'session-ecart-warn');
+    return `<div class="session-row">
+      <span>${s.business_date} ${s.opened_at||''}</span>
+      <span>${s.cashier}</span>
+      <span>${f2(s.total_sales)} DT</span>
+      <span class="${ecartColor}">${s.ecart !== null ? (s.ecart >= 0 ? '+' : '') + f2(s.ecart) + ' DT' : '—'}</span>
+    </div>`;
+  }).join('') || '<div style="text-align:center;color:var(--muted);padding:20px">Aucune session</div>';
+
+  box.innerHTML = `
+    <div class="session-icon">📋</div>
+    <div class="session-title">Historique des Sessions</div>
+    <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);margin-bottom:4px">
+      <span>Date</span><span>Caissier</span><span>Total</span><span>Écart</span>
+    </div>
+    ${rows}
+    <button class="mcancel" style="margin-top:14px" onclick="document.getElementById('session-modal').style.display='none'">Fermer</button>
+  `;
+  document.getElementById('session-modal').style.display = 'flex';
+}
   if (!SYNC_ENABLED) return;
   try {
     const res = await fetch(SYNC_API_URL, {
@@ -729,6 +907,7 @@ async function flushQueue() {
 // Flush queue when internet comes back
 window.addEventListener('online', () => {
   flushQueue();
+  flushClotureQueue();
   flash('☁ Synchronisation en cours...');
 });
 
@@ -1114,6 +1293,9 @@ async function loginSuccess(role){
     document.getElementById('btn-menu-manage').style.display='none';
     document.getElementById('btn-cloturer').style.display='none';
   }
+  // Reset session badge
+  document.getElementById('session-badge-hdr').style.display='none';
+  currentSession = null;
   document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
   document.getElementById('client-row').style.display=(orderType==='take'||orderType==='del')?'flex':'none';
   document.getElementById('cli-name').value=cliName;
@@ -1131,6 +1313,21 @@ async function loginSuccess(role){
   setTimeout(()=>{const s=document.getElementById('srch');if(s)s.focus({preventScroll:true});},50);
   if(!sqliteAvailable) flash('⚠ Historique SQLite indisponible — mode session uniquement');
   else flash('✓ Bienvenue, '+u.name+' !');
+  // Restore session if already opened today, otherwise ask to open
+  setTimeout(()=>{
+    const saved = loadSessionFromStorage();
+    if(saved){
+      // Resume existing session — no modal needed
+      currentSession = saved;
+      const badge = document.getElementById('session-badge-hdr');
+      const disp  = document.getElementById('session-fond-display');
+      if(badge && disp){ disp.textContent = f2(saved.fondInitial)+' DT'; badge.style.display=''; }
+      flash('✓ Session reprise — Fond: '+f2(saved.fondInitial)+' DT');
+    } else {
+      // No session today — ask to open
+      showOpenCaisseModal();
+    }
+  }, 300);
 }
 function logout(){
   if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
@@ -1620,42 +1817,104 @@ function setDrinkStock(id){
 
 function cloturerJournee(){
   if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
-  const total=hist.reduce((a,h)=>a+h.g,0);
-  const count=hist.length;
-  const cash=hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
-  const card=hist.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
-  const mob =hist.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
-  const now=new Date();
-  const summary=
-    `╔══════════════════════════╗\n`+
-    `     CLÔTURE DE JOURNÉE     \n`+
-    `  ${now.toLocaleDateString('fr-TN')} — ${now.toLocaleTimeString('fr-TN')}\n`+
-    `╠══════════════════════════╣\n`+
-    `  Commandes   : ${count}\n`+
-    `  Total       : ${f(total)} DT\n`+
-    `  Espèces     : ${f(cash)} DT\n`+
-    `  Carte       : ${f(card)} DT\n`+
-    `  Mobile      : ${f(mob)} DT\n`+
-    `╚══════════════════════════╝`;
 
-  if(!confirm(summary+'\n\nConfirmer la clôture et remettre les numéros à zéro ?'))return;
+  const total = hist.reduce((a,h)=>a+h.g,0);
+  const count = hist.length;
+  const cash  = hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const card  = hist.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
+  const mob   = hist.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
+  const fond  = currentSession?.fondInitial || 0;
+  const theorique = fond + cash; // cash + fond initial = what should be in drawer
+  const now   = new Date();
+  const bizDate = todayKey();
 
-  // Reset everything
-  daily=0;
-  hist=[];
-  orderNum=1;
-  items=[];
-  disc=0;
-  payMode='cash';
-  orderType='place';
-  cliName='';
-  cliTel='';
-  lastOrderData=null;
-  businessStateReady=null;
+  const box = document.getElementById('session-box-content');
+  box.innerHTML = `
+    <div class="session-icon">🔒</div>
+    <div class="session-title">Clôture de Journée</div>
+    <div style="margin-bottom:16px">
+      <div class="session-row"><span>Commandes</span><span>${count}</span></div>
+      <div class="session-row"><span>Total ventes</span><span>${f(total)} DT</span></div>
+      <div class="session-row"><span>💵 Espèces</span><span>${f(cash)} DT</span></div>
+      <div class="session-row"><span>💳 Carte</span><span>${f(card)} DT</span></div>
+      <div class="session-row"><span>📱 Mobile</span><span>${f(mob)} DT</span></div>
+      <div class="session-row"><span>💰 Fond initial</span><span>${f(fond)} DT</span></div>
+      <div class="session-row" style="border-top:2px solid var(--gold);margin-top:4px;padding-top:8px">
+        <span>💼 Théorique tiroir</span><span style="color:var(--gold-l);font-weight:700">${f(theorique)} DT</span>
+      </div>
+    </div>
+    <div class="session-input-row">
+      <label>Montant compté dans le tiroir (DT)</label>
+      <input class="session-inp" type="number" id="compte-inp" placeholder="0.000"
+        step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <div id="ecart-display" style="display:none;padding:12px;border-radius:8px;margin-bottom:12px;font-size:18px;font-weight:700;text-align:center"></div>
+    <button class="btn-session-close" onclick="confirmerCloture(${total},${count},${cash},${card},${mob},${theorique},'${bizDate}','${now.toLocaleTimeString('fr-TN')}')">
+      ✓ Confirmer la clôture
+    </button>
+    <button class="mcancel" style="margin-top:8px" onclick="document.getElementById('session-modal').style.display='none'">Annuler</button>
+  `;
+  document.getElementById('session-modal').style.display = 'flex';
+  setTimeout(()=>{ const i=document.getElementById('compte-inp'); if(i)i.focus(); },100);
+
+  // Live écart calculation
+  document.getElementById('compte-inp')?.addEventListener('input', function(){
+    const compte = parseFloat(this.value)||0;
+    const ecart  = compte - theorique;
+    const el = document.getElementById('ecart-display');
+    if(this.value !== ''){
+      el.style.display = '';
+      el.style.background = ecart >= 0 ? 'rgba(61,184,122,.15)' : 'rgba(224,82,82,.15)';
+      el.style.color = ecart >= 0 ? 'var(--green)' : 'var(--red)';
+      el.textContent = 'Écart: ' + (ecart >= 0 ? '+' : '') + f(ecart) + ' DT ' + (ecart === 0 ? '✅' : ecart > 0 ? '⬆' : '⚠');
+    } else {
+      el.style.display = 'none';
+    }
+  });
+}
+
+async function confirmerCloture(total, count, cash, card, mob, theorique, bizDate, closeTime){
+  const montantCompte = parseFloat(document.getElementById('compte-inp')?.value) || 0;
+  const ecart = montantCompte - theorique;
+
+  // Save session close to SQLite
+  if(currentSession?.id && window.electronAPI?.closeSession){
+    await window.electronAPI.closeSession(currentSession.id, {
+      closedAt: closeTime,
+      totalSales: total,
+      cashSales: cash,
+      cardSales: card,
+      mobileSales: mob,
+      ordersCount: count,
+      montantCompte,
+      theorique,
+      ecart,
+    });
+  }
+
+  // Sync to Vercel (queued if offline)
+  syncCloture({
+    businessDate: bizDate,
+    total, ordersCount: count,
+    cashTotal: cash, cardTotal: card, mobileTotal: mob,
+    fondInitial: currentSession?.fondInitial || 0,
+    montantCompte, theorique, ecart,
+    cashier: USERS[currentUser].name,
+  });
+
+  // Close modal
+  document.getElementById('session-modal').style.display = 'none';
+  currentSession = null;
+  saveSessionToStorage();
+  document.getElementById('session-badge-hdr').style.display = 'none';
+
+  // Reset day
+  daily=0; hist=[]; orderNum=1; items=[]; disc=0;
+  payMode='cash'; orderType='place'; cliName=''; cliTel='';
+  lastOrderData=null; businessStateReady=null;
   localStorage.removeItem(STORE_KEY);
   _lastDay=todayKey();
 
-  // Update UI
   document.getElementById('onum').textContent='#001';
   document.getElementById('dt').textContent='Ventes du jour : 0.000 DT';
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
@@ -1667,9 +1926,10 @@ function cloturerJournee(){
   document.getElementById('cli-name').value='';
   document.getElementById('cli-tel').value='';
   document.getElementById('cr').value='';
-  renderOrd();
-  saveState();
-  flash('✅ Journée clôturée — Commandes remises à #001');
+  renderOrd(); saveState();
+
+  const ecartMsg = ecart === 0 ? '✅ Caisse juste!' : (ecart > 0 ? `⬆ Excédent: +${f(ecart)} DT` : `⚠ Manque: ${f(ecart)} DT`);
+  flash('🔒 Clôturée — ' + ecartMsg);
 }
 
 function showHistorique(){

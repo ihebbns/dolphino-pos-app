@@ -78,6 +78,24 @@ function runMigrations() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_date TEXT NOT NULL,
+      cashier TEXT NOT NULL,
+      opened_at TEXT NOT NULL,
+      closed_at TEXT,
+      fond_initial REAL NOT NULL DEFAULT 0,
+      total_sales REAL NOT NULL DEFAULT 0,
+      cash_sales REAL NOT NULL DEFAULT 0,
+      card_sales REAL NOT NULL DEFAULT 0,
+      mobile_sales REAL NOT NULL DEFAULT 0,
+      orders_count INTEGER NOT NULL DEFAULT 0,
+      montant_compte REAL,
+      theorique REAL,
+      ecart REAL,
+      synced INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -271,6 +289,44 @@ function getDatabaseStatus() {
   };
 }
 
+async function saveSession(userDataPath, session) {
+  await getDatabaseReady(userDataPath);
+  if (!dbAvailable || !db) return { ok: false, error: 'SQLite indisponible' };
+  db.run(
+    `INSERT INTO sessions (business_date, cashier, opened_at, fond_initial)
+     VALUES (?, ?, ?, ?)`,
+    [session.businessDate, session.cashier, session.openedAt, session.fondInitial]
+  );
+  persistDatabase();
+  const rows = db.exec('SELECT last_insert_rowid() AS id');
+  const id = rows[0]?.values?.[0]?.[0] ?? null;
+  return { ok: true, id };
+}
+
+async function closeSession(userDataPath, id, data) {
+  await getDatabaseReady(userDataPath);
+  if (!dbAvailable || !db) return { ok: false, error: 'SQLite indisponible' };
+  db.run(
+    `UPDATE sessions SET
+       closed_at=?, total_sales=?, cash_sales=?, card_sales=?, mobile_sales=?,
+       orders_count=?, montant_compte=?, theorique=?, ecart=?
+     WHERE id=?`,
+    [
+      data.closedAt, data.totalSales, data.cashSales, data.cardSales, data.mobileSales,
+      data.ordersCount, data.montantCompte, data.theorique, data.ecart, id
+    ]
+  );
+  persistDatabase();
+  return { ok: true };
+}
+
+async function getSessions(userDataPath) {
+  await getDatabaseReady(userDataPath);
+  if (!dbAvailable || !db) return [];
+  const rows = resultToObjects(db.exec('SELECT * FROM sessions ORDER BY id DESC LIMIT 30'));
+  return rows;
+}
+
 module.exports = {
   businessDateKey,
   closeDatabase,
@@ -278,4 +334,7 @@ module.exports = {
   getDatabaseStatus,
   getSales,
   saveSale,
+  saveSession,
+  closeSession,
+  getSessions,
 };

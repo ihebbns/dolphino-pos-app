@@ -9,6 +9,9 @@ const {
   getDatabaseStatus,
   getSales,
   saveSale,
+  saveSession,
+  closeSession,
+  getSessions,
 } = require('./database');
 
 let mainWindow;
@@ -223,6 +226,22 @@ Write-Host "OK:$p bytes:$written"`
   });
 });
 
+
+// ── SESSION HANDLERS ──────────────────────────────────
+ipcMain.handle('db-save-session', async (_event, session) => {
+  try { return await saveSession(userDataPath(), session); }
+  catch(e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('db-close-session', async (_event, id, data) => {
+  try { return await closeSession(userDataPath(), id, data); }
+  catch(e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('db-get-sessions', async () => {
+  try { return await getSessions(userDataPath()); }
+  catch(e) { return []; }
+});
 
 app.whenReady().then(() => {
   getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
