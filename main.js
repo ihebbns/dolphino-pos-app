@@ -166,13 +166,12 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
 });
 
 // ── CASH DRAWER (XP-80T via RJ11 cable) ───────────────────────────────
-// Uses Windows WritePrinter API via PowerShell — no printer sharing needed
+// Uses Windows WritePrinter API — no printer sharing needed
 ipcMain.handle('open-cash-drawer', async () => {
   return new Promise((resolve) => {
     try {
       const ps = [
         '-NoProfile', '-NonInteractive', '-Command',
-        // Find XP-80T or first available printer, send ESC p pulse via WritePrinter
         `Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -214,10 +213,17 @@ $written=0; [RawPrint]::WritePrinter($hPrinter,$bytes,$bytes.Length,[ref]$writte
 Write-Host "OK:$p bytes:$written"`
       ];
 
-      execFile('powershell', ps, { timeout: 8000 }, (err, stdout) => {
+      execFile('powershell', ps, { timeout: 12000 }, (err, stdout) => {
         const ok = !err && stdout && stdout.includes('OK:');
         console.log('[CashDrawer]', stdout?.trim() || err?.message);
         resolve({ ok, log: stdout?.trim() });
+      });
+    } catch (e) {
+      console.error('[CashDrawer] Error:', e.message);
+      resolve({ ok: false, error: e.message });
+    }
+  });
+});
       });
     } catch (e) {
       console.error('[CashDrawer] Error:', e.message);
