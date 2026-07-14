@@ -59,7 +59,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Dolphino POS",
-      "perMachine": true,
       "runAfterFinish": true
     },
     "portable": {
