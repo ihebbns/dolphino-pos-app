@@ -1,6 +1,6 @@
 {
   "name": "dolphino-pos",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Système de caisse Dolphino Restaurant & Fast Food",
   "main": "main.js",
   "author": "Dolphino Tunisie",
@@ -58,7 +58,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Dolphino POS"
+      "shortcutName": "Dolphino POS",
+      "perMachine": true,
+      "runAfterFinish": true
     },
     "portable": {
       "artifactName": "DolphinoPOS-portable.exe"
