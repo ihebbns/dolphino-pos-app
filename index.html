@@ -14,6 +14,12 @@
   --green:#3DB87A;--red:#E05252;--blue:#4A90D9;--orange:#E8882A;
   --r:9px;
 }
+body.light{
+  --bg:#F5F0E8;--panel:#FFFFFF;--card:#F0EBE0;--card-h:#E8E0D0;
+  --gold:#B8782A;--gold-l:#A06820;--gold-dim:rgba(184,120,42,.1);
+  --txt:#1A1208;--muted:#8A7A6A;--div:#DDD5C5;
+  --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;
+}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
 input,textarea,select{font-family:inherit;-webkit-user-select:text;user-select:text;}
 button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-color:transparent;}
@@ -351,6 +357,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">💰 <span id="session-fond-display">—</span></div>
+    <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
   </div>
 </header>
@@ -1773,7 +1780,7 @@ function showDash(){
     <div class="kpi"><div class="kpi-val">${f(avg)} DT</div><div class="kpi-lbl">Ticket moyen</div></div>
     <div class="kpi"><div class="kpi-val">${f(cash)} DT</div><div class="kpi-lbl">Espèces</div></div>
     <div class="kpi"><div class="kpi-val">${f(total-cash)} DT</div><div class="kpi-lbl">Carte / Mobile</div></div>
-    <div class="kpi"><div class="kpi-val">${topItem?topItem[0]+' ('+topItem[1]+')':'—'}</div><div class="kpi-lbl">Article le plus vendu</div></div>`;
+    <div class="kpi"><div class="kpi-val" style="font-size:${topItem&&topItem[0].length>15?'14px':'24px'}">${topItem?topItem[0]:'—'}</div><div class="kpi-lbl">Article le plus vendu</div>${topItem?`<div style="font-size:12px;color:var(--gold);margin-top:3px;font-weight:600">vendu ${topItem[1]} fois</div>`:''}</div>`;
 
   // ── DRINK STOCK ──────────────────────────────────────
   const stock = loadStock();
@@ -1838,9 +1845,7 @@ function cloturerJournee(){
   const now   = new Date();
   const bizDate = todayKey();
 
-  const box = document.getElementById('session-box-content');
-  box.innerHTML = `
-    <div class="session-icon">🔒</div>
+  createSessionModal(`
     <div class="session-title">Clôture de Journée</div>
     <div style="margin-bottom:16px">
       <div class="session-row"><span>Commandes</span><span>${count}</span></div>
@@ -1863,12 +1868,10 @@ function cloturerJournee(){
       ✓ Confirmer la clôture
     </button>
     <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Annuler</button>
-  `;
-  /* modal created dynamically */;
-  setTimeout(()=>{ const i=document.getElementById('compte-inp'); if(i)i.focus(); },100);
-
-  // Live écart calculation
-  document.getElementById('compte-inp')?.addEventListener('input', function(){
+  `);
+  setTimeout(()=>{
+    const i=document.getElementById('compte-inp'); if(i)i.focus();
+    document.getElementById('compte-inp')?.addEventListener('input', function(){
     const compte = parseFloat(this.value)||0;
     const ecart  = compte - theorique;
     const el = document.getElementById('ecart-display');
@@ -1881,6 +1884,7 @@ function cloturerJournee(){
       el.style.display = 'none';
     }
   });
+  },100);
 }
 
 async function confirmerCloture(total, count, cash, card, mob, theorique, bizDate, closeTime){
@@ -1952,6 +1956,22 @@ function showHistorique(){
 // ═══════════════ UTILS ═══════════════
 function f(n){return Number(n).toFixed(3);}
 function flash(m){const el=document.getElementById('stm');if(el){el.textContent=m;setTimeout(()=>{el.textContent='✓ Prêt';},2500);}}
+
+// ═══════════════ THEME TOGGLE ═══════════════
+const THEME_KEY='dolphino-theme-v1';
+function applyTheme(t){
+  document.body.classList.toggle('light', t==='light');
+  const btn=document.getElementById('btn-theme');
+  if(btn) btn.textContent = t==='light' ? '🌙' : '☀️';
+}
+function toggleTheme(){
+  const isLight=document.body.classList.contains('light');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+}
+// Apply saved theme on load
+applyTheme(localStorage.getItem(THEME_KEY)||'dark');
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
