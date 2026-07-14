@@ -373,6 +373,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">💰 <span id="session-fond-display">—</span></div>
+    <button class="hdr-btn" id="btn-open-drawer" onclick="openDrawerManual()" style="display:none" title="Ouvrir le tiroir-caisse manuellement">🗄️ Tiroir</button>
     <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
   </div>
@@ -1384,7 +1385,7 @@ async function loginSuccess(role){
   setTimeout(()=>{const s=document.getElementById('srch');if(s)s.focus({preventScroll:true});},50);
   if(!sqliteAvailable) flash('⚠ Historique SQLite indisponible — mode session uniquement');
   else flash('✓ Bienvenue, '+u.name+' !');
-  // Restore session if already opened today, otherwise show open button
+  // Restore session if already opened today, otherwise show open button (manager only)
   setTimeout(()=>{
     const saved = loadSessionFromStorage();
     if(saved){
@@ -1393,7 +1394,8 @@ async function loginSuccess(role){
       const disp  = document.getElementById('session-fond-display');
       if(badge && disp){ disp.textContent = saved.cashier + ' · ' + f2(saved.fondInitial)+' DT'; badge.style.display=''; }
       flash('✓ Session reprise — ' + saved.cashier + ' · Fond: '+f2(saved.fondInitial)+' DT');
-    } else {
+    } else if(USERS[currentUser]?.isManager){
+      // Only ask manager to open caisse — caissier just waits
       showOpenCaisseModal();
     }
     updateCaisseButton();
@@ -1575,13 +1577,7 @@ function updBtn(){
   const btn=document.getElementById('enc');
   if(!btn) return;
   const g=getGrand();
-  // Block sale if caisse is not open
-  if(!currentSession){
-    btn.disabled=true;
-    btn.textContent='💰 Ouvrir la caisse d\'abord';
-    btn.style.opacity='.5';
-    return;
-  }
+  // Restore button text always
   btn.textContent='✓  Encaisser & Imprimer';
   btn.style.opacity='';
   if(!items.length||g<=0){btn.disabled=true;return;}
