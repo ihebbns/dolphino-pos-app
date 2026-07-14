@@ -790,11 +790,27 @@ function loadSessionFromStorage(){
     const raw = localStorage.getItem(SESSION_KEY);
     if(!raw) return null;
     const s = JSON.parse(raw);
-    // Only restore if session is from today
     if(s && s.date === todayKey()) return s;
-    localStorage.removeItem(SESSION_KEY); // stale session from previous day
+    localStorage.removeItem(SESSION_KEY);
     return null;
   }catch(e){ return null; }
+}
+
+// ── Update header button: open ↔ clôturer ──
+function updateCaisseButton(){
+  const btn = document.getElementById('btn-cloturer');
+  if(!btn) return;
+  if(currentSession){
+    btn.textContent = '🔒 Clôturer la caisse';
+    btn.style.borderColor = 'rgba(224,82,82,.3)';
+    btn.style.color = 'var(--red)';
+    btn.onclick = cloturerJournee;
+  } else {
+    btn.textContent = '💰 Ouvrir la caisse';
+    btn.style.borderColor = 'rgba(61,184,122,.3)';
+    btn.style.color = 'var(--green)';
+    btn.onclick = showOpenCaisseModal;
+  }
 }
 
 // ── Session modal helpers — created dynamically, never blocks UI ──
@@ -818,28 +834,36 @@ function getSessionBox() {
   return document.getElementById('session-box-content');
 }
 async function showOpenCaisseModal(){
+  // Pre-fill caissier name from logged-in user
+  const caissierDefault = currentUser ? USERS[currentUser].name : '';
   createSessionModal(`
     <div class="session-icon">💰</div>
     <div class="session-title">Ouverture de Caisse</div>
-    <div class="session-sub">Comptez l'argent dans le tiroir<br>et saisissez le fond de caisse initial.</div>
+    <div class="session-sub">Saisissez le nom du caissier et le fond de caisse initial.</div>
     <div class="session-input-row">
-      <label>Fond de caisse (DT)</label>
+      <label>Nom du caissier</label>
+      <input class="session-inp" type="text" id="caissier-inp" placeholder="Nom caissier"
+        value="${caissierDefault}" autocomplete="off" onfocus="this.select()" style="font-size:15px">
+    </div>
+    <div class="session-input-row" style="margin-top:10px">
+      <label>Fond de caisse initial (DT)</label>
       <input class="session-inp" type="number" id="fond-inp" placeholder="0.000"
         step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
     </div>
-    <button class="btn-session-open" onclick="confirmOpenCaisse()">✓ Ouvrir la caisse</button>
+    <button class="btn-session-open" onclick="confirmOpenCaisse()" style="margin-top:8px">✓ Ouvrir la caisse</button>
   `);
   setTimeout(() => { const i = document.getElementById('fond-inp'); if(i) i.focus(); }, 100);
 }
 
 async function confirmOpenCaisse(){
-  const fondVal = parseFloat(document.getElementById('fond-inp')?.value) || 0;
+  const fondVal      = parseFloat(document.getElementById('fond-inp')?.value) || 0;
+  const caissierName = (document.getElementById('caissier-inp')?.value || '').trim() || USERS[currentUser]?.name || 'Caissier';
   const now = new Date();
   const sessionData = {
     businessDate: todayKey(),
-    cashier: USERS[currentUser].name,
-    openedAt: now.toLocaleTimeString('fr-TN'),
-    fondInitial: fondVal,
+    cashier:      caissierName,
+    openedAt:     now.toLocaleTimeString('fr-TN'),
+    fondInitial:  fondVal,
   };
 
   let sessionId = null;
@@ -848,19 +872,25 @@ async function confirmOpenCaisse(){
     if (res?.ok) sessionId = res.id;
   }
 
-  currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: sessionData.cashier, date: todayKey() };
+  currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: caissierName, date: todayKey() };
   saveSessionToStorage();
   destroySessionModal();
 
-  // Show fond badge in header
+  // Show caissier + fond badge in header
   const badge = document.getElementById('session-badge-hdr');
   const disp  = document.getElementById('session-fond-display');
   if (badge && disp) {
-    disp.textContent = f2(fondVal) + ' DT';
+    disp.textContent = caissierName + ' · ' + f2(fondVal) + ' DT';
     badge.style.display = '';
   }
 
-  flash('✅ Caisse ouverte — Fond: ' + f2(fondVal) + ' DT');
+  // Switch button to "Clôturer la caisse"
+  updateCaisseButton();
+
+  // Enable the Encaisser button
+  updBtn();
+
+  flash('✅ Caisse ouverte — ' + caissierName + ' · Fond: ' + f2(fondVal) + ' DT');
 }
 
 async function showSessions(){
@@ -1062,6 +1092,7 @@ async function hydrateBusinessState(){
       const currentDay = todayKey();
       daily = hist.filter(sale => sale.businessDate === currentDay).reduce((sum, sale) => sum + (Number(sale.g) || 0), 0);
       const todaySales = hist.filter(sale => sale.businessDate === currentDay);
+      // Ticket counter always continues from last sale of today — reset only at 5AM
       orderNum = todaySales.length ? Math.max(...todaySales.map(sale => Number(sale.num) || 0)) + 1 : 1;
       sqliteAvailable = true;
     }catch(error){
@@ -1261,13 +1292,20 @@ function tick(){
     hist=[];
     orderNum=1;
     localStorage.removeItem(STORE_KEY);
-    businessStateReady=null; // allow re-hydrate next login
-    // update visible order number if app is open
+    businessStateReady=null;
+    // Clear any old session from previous day
+    const oldSession = loadSessionFromStorage();
+    if(oldSession && oldSession.date !== today) {
+      currentSession = null;
+      saveSessionToStorage();
+    }
     const onum=document.getElementById('onum');
     if(onum)onum.textContent='#001';
     const dt=document.getElementById('dt');
     if(dt)dt.textContent='Ventes du jour : 0.000 DT';
-    flash('🌅 Nouveau jour — Commandes réinitialisées à #001');
+    updateCaisseButton();
+    updBtn();
+    flash('🌅 Nouveau jour — Tickets réinitialisés à #001');
   }
 }
 tick();setInterval(tick,1000);
@@ -1346,20 +1384,20 @@ async function loginSuccess(role){
   setTimeout(()=>{const s=document.getElementById('srch');if(s)s.focus({preventScroll:true});},50);
   if(!sqliteAvailable) flash('⚠ Historique SQLite indisponible — mode session uniquement');
   else flash('✓ Bienvenue, '+u.name+' !');
-  // Restore session if already opened today, otherwise ask to open
+  // Restore session if already opened today, otherwise show open button
   setTimeout(()=>{
     const saved = loadSessionFromStorage();
     if(saved){
-      // Resume existing session — no modal needed
       currentSession = saved;
       const badge = document.getElementById('session-badge-hdr');
       const disp  = document.getElementById('session-fond-display');
-      if(badge && disp){ disp.textContent = f2(saved.fondInitial)+' DT'; badge.style.display=''; }
-      flash('✓ Session reprise — Fond: '+f2(saved.fondInitial)+' DT');
+      if(badge && disp){ disp.textContent = saved.cashier + ' · ' + f2(saved.fondInitial)+' DT'; badge.style.display=''; }
+      flash('✓ Session reprise — ' + saved.cashier + ' · Fond: '+f2(saved.fondInitial)+' DT');
     } else {
-      // No session today — ask to open
       showOpenCaisseModal();
     }
+    updateCaisseButton();
+    updBtn();
   }, 300);
 }
 function logout(){
@@ -1535,8 +1573,17 @@ function calcM(){
 }
 function updBtn(){
   const btn=document.getElementById('enc');
-  if(!btn)return;
+  if(!btn) return;
   const g=getGrand();
+  // Block sale if caisse is not open
+  if(!currentSession){
+    btn.disabled=true;
+    btn.textContent='💰 Ouvrir la caisse d\'abord';
+    btn.style.opacity='.5';
+    return;
+  }
+  btn.textContent='✓  Encaisser & Imprimer';
+  btn.style.opacity='';
   if(!items.length||g<=0){btn.disabled=true;return;}
   const crEl=document.getElementById('cr');
   const paid=crEl?parseFloat(crEl.value)||0:0;
@@ -1932,34 +1979,20 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
     cashier: USERS[currentUser].name,
   });
 
-  // Close modal
+  // Close modal — caisse is now closed, ticket counter STAYS untouched
   destroySessionModal();
   currentSession = null;
   saveSessionToStorage();
   document.getElementById('session-badge-hdr').style.display = 'none';
 
-  // Reset day
-  daily=0; hist=[]; orderNum=1; items=[]; disc=0;
-  payMode='cash'; orderType='place'; cliName=''; cliTel='';
-  lastOrderData=null; businessStateReady=null;
-  localStorage.removeItem(STORE_KEY);
-  _lastDay=todayKey();
+  // Update button: now shows "💰 Ouvrir la caisse"
+  updateCaisseButton();
 
-  document.getElementById('onum').textContent='#001';
-  document.getElementById('dt').textContent='Ventes du jour : 0.000 DT';
-  document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
-  document.querySelectorAll('.pb').forEach((b,i)=>b.classList.toggle('on',i===0));
-  document.querySelectorAll('.ot-btn').forEach(b=>b.classList.remove('on'));
-  document.getElementById('ot-place').classList.add('on');
-  document.getElementById('cs').style.display='';
-  document.getElementById('client-row').style.display='none';
-  document.getElementById('cli-name').value='';
-  document.getElementById('cli-tel').value='';
-  document.getElementById('cr').value='';
-  renderOrd(); saveState();
+  // Block sales until caisse reopened
+  updBtn();
 
   const ecartMsg = ecart === 0 ? '✅ Caisse juste!' : (ecart > 0 ? `⬆ Excédent: +${f(ecart)} DT` : `⚠ Manque: ${f(ecart)} DT`);
-  flash('🔒 Clôturée — ' + ecartMsg);
+  flash('🔒 Caisse clôturée — ' + ecartMsg);
 }
 
 function showHistorique(){
