@@ -198,7 +198,7 @@ public class RawPrint {
 $p = (Get-Printer | Where-Object {$_.Name -match 'XP|80|POS|Thermal'} | Select-Object -First 1).Name;
 if (-not $p) { $p = (Get-Printer | Select-Object -First 1).Name };
 if (-not $p) { Write-Host 'NO_PRINTER'; exit };
-$bytes = [byte[]](0x1B,0x70,0x00,0x32,0xFA);
+$bytes = [byte[]](0x1B,0x70,0x00,0x19,0xFA);
 $hPrinter = [IntPtr]::Zero;
 [RawPrint]::OpenPrinter($p, [ref]$hPrinter, [IntPtr]::Zero) | Out-Null;
 $doc = New-Object RawPrint+DOCINFO; $doc.pDocName='CashDrawer'; $doc.pDataType='RAW';
