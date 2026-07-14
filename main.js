@@ -224,13 +224,6 @@ Write-Host "OK:$p bytes:$written"`
     }
   });
 });
-      });
-    } catch (e) {
-      console.error('[CashDrawer] Error:', e.message);
-      resolve({ ok: false, error: e.message });
-    }
-  });
-});
 
 
 // ── SESSION HANDLERS ──────────────────────────────────
