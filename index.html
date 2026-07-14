@@ -329,6 +329,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     </div>
     <button class="hdr-btn" id="btn-menu-manage" onclick="showMenuManage()" style="display:none">🛠️ Gérer le menu</button>
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
+    <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
   </div>
 </header>
@@ -1107,9 +1108,11 @@ async function loginSuccess(role){
   if(u.isManager){
     document.getElementById('btn-dash').style.display='';
     document.getElementById('btn-menu-manage').style.display='';
+    document.getElementById('btn-cloturer').style.display='';
   }else{
     document.getElementById('btn-dash').style.display='none';
     document.getElementById('btn-menu-manage').style.display='none';
+    document.getElementById('btn-cloturer').style.display='none';
   }
   document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
   document.getElementById('client-row').style.display=(orderType==='take'||orderType==='del')?'flex':'none';
@@ -1613,6 +1616,60 @@ function setDrinkStock(id){
   inp.value='';
   flash('✓ Stock mis à jour');
   showDash(); // refresh
+}
+
+function cloturerJournee(){
+  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
+  const total=hist.reduce((a,h)=>a+h.g,0);
+  const count=hist.length;
+  const cash=hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const card=hist.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
+  const mob =hist.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
+  const now=new Date();
+  const summary=
+    `╔══════════════════════════╗\n`+
+    `     CLÔTURE DE JOURNÉE     \n`+
+    `  ${now.toLocaleDateString('fr-TN')} — ${now.toLocaleTimeString('fr-TN')}\n`+
+    `╠══════════════════════════╣\n`+
+    `  Commandes   : ${count}\n`+
+    `  Total       : ${f(total)} DT\n`+
+    `  Espèces     : ${f(cash)} DT\n`+
+    `  Carte       : ${f(card)} DT\n`+
+    `  Mobile      : ${f(mob)} DT\n`+
+    `╚══════════════════════════╝`;
+
+  if(!confirm(summary+'\n\nConfirmer la clôture et remettre les numéros à zéro ?'))return;
+
+  // Reset everything
+  daily=0;
+  hist=[];
+  orderNum=1;
+  items=[];
+  disc=0;
+  payMode='cash';
+  orderType='place';
+  cliName='';
+  cliTel='';
+  lastOrderData=null;
+  businessStateReady=null;
+  localStorage.removeItem(STORE_KEY);
+  _lastDay=todayKey();
+
+  // Update UI
+  document.getElementById('onum').textContent='#001';
+  document.getElementById('dt').textContent='Ventes du jour : 0.000 DT';
+  document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.querySelectorAll('.pb').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.querySelectorAll('.ot-btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('ot-place').classList.add('on');
+  document.getElementById('cs').style.display='';
+  document.getElementById('client-row').style.display='none';
+  document.getElementById('cli-name').value='';
+  document.getElementById('cli-tel').value='';
+  document.getElementById('cr').value='';
+  renderOrd();
+  saveState();
+  flash('✅ Journée clôturée — Commandes remises à #001');
 }
 
 function showHistorique(){
