@@ -263,8 +263,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .mm-price-field:focus{border-color:var(--gold);}
 
 /* ── SESSION CAISSE ── */
-.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);pointer-events:none;}
-.session-modal-wrap.active{display:flex;pointer-events:all;}
+.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
 .session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
 .session-icon{font-size:44px;margin-bottom:8px;}
 .session-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
@@ -296,13 +295,6 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 </style>
 </head>
 <body>
-
-<!-- ══ SESSION CAISSE MODAL ══ -->
-<div class="session-modal-wrap" id="session-modal">
-  <div class="session-box" id="session-box-content">
-    <!-- content injected by JS -->
-  </div>
-</div>
 
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
@@ -782,9 +774,28 @@ function loadSessionFromStorage(){
   }catch(e){ return null; }
 }
 
+// ── Session modal helpers — created dynamically, never blocks UI ──
+function createSessionModal(innerHtml) {
+  destroySessionModal();
+  const wrap = document.createElement('div');
+  wrap.className = 'session-modal-wrap';
+  wrap.id = 'session-modal';
+  const box = document.createElement('div');
+  box.className = 'session-box';
+  box.id = 'session-box-content';
+  box.innerHTML = innerHtml;
+  wrap.appendChild(box);
+  document.body.appendChild(wrap);
+}
+function destroySessionModal() {
+  const existing = document.getElementById('session-modal');
+  if (existing) existing.remove();
+}
+function getSessionBox() {
+  return document.getElementById('session-box-content');
+}
 async function showOpenCaisseModal(){
-  const box = document.getElementById('session-box-content');
-  box.innerHTML = `
+  createSessionModal(`
     <div class="session-icon">💰</div>
     <div class="session-title">Ouverture de Caisse</div>
     <div class="session-sub">Comptez l'argent dans le tiroir<br>et saisissez le fond de caisse initial.</div>
@@ -794,8 +805,7 @@ async function showOpenCaisseModal(){
         step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
     </div>
     <button class="btn-session-open" onclick="confirmOpenCaisse()">✓ Ouvrir la caisse</button>
-  `;
-  document.getElementById('session-modal').classList.add('active');
+  `);
   setTimeout(() => { const i = document.getElementById('fond-inp'); if(i) i.focus(); }, 100);
 }
 
@@ -817,7 +827,7 @@ async function confirmOpenCaisse(){
 
   currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: sessionData.cashier, date: todayKey() };
   saveSessionToStorage();
-  document.getElementById('session-modal').classList.remove('active');
+  destroySessionModal();
 
   // Show fond badge in header
   const badge = document.getElementById('session-badge-hdr');
@@ -834,8 +844,6 @@ async function showSessions(){
   if (!USERS[currentUser].isManager) { alert('Accès réservé au Manager.'); return; }
   let sessions = [];
   if (window.electronAPI?.getSessions) sessions = await window.electronAPI.getSessions() || [];
-
-  const box = document.getElementById('session-box-content');
   const rows = sessions.slice(0, 10).map(s => {
     const ecartColor = s.ecart === null ? '' :
       (s.ecart >= 0 ? 'session-ecart-ok' : 'session-ecart-warn');
@@ -847,17 +855,18 @@ async function showSessions(){
     </div>`;
   }).join('') || '<div style="text-align:center;color:var(--muted);padding:20px">Aucune session</div>';
 
-  box.innerHTML = `
+  createSessionModal(`
     <div class="session-icon">📋</div>
     <div class="session-title">Historique des Sessions</div>
     <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);margin-bottom:4px">
       <span>Date</span><span>Caissier</span><span>Total</span><span>Écart</span>
     </div>
     ${rows}
-    <button class="mcancel" style="margin-top:14px" onclick="document.getElementById('session-modal').classList.remove('active')">Fermer</button>
-  `;
-  document.getElementById('session-modal').classList.add('active');
+    <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
+  `);
 }
+
+async function syncSale(od) {
   if (!SYNC_ENABLED) return;
   try {
     const res = await fetch(SYNC_API_URL, {
@@ -1853,9 +1862,9 @@ function cloturerJournee(){
     <button class="btn-session-close" onclick="confirmerCloture(${total},${count},${cash},${card},${mob},${theorique},'${bizDate}','${now.toLocaleTimeString('fr-TN')}')">
       ✓ Confirmer la clôture
     </button>
-    <button class="mcancel" style="margin-top:8px" onclick="document.getElementById('session-modal').classList.remove('active')">Annuler</button>
+    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Annuler</button>
   `;
-  document.getElementById('session-modal').classList.add('active');
+  /* modal created dynamically */;
   setTimeout(()=>{ const i=document.getElementById('compte-inp'); if(i)i.focus(); },100);
 
   // Live écart calculation
@@ -1904,7 +1913,7 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   });
 
   // Close modal
-  document.getElementById('session-modal').classList.remove('active');
+  destroySessionModal();
   currentSession = null;
   saveSessionToStorage();
   document.getElementById('session-badge-hdr').style.display = 'none';
