@@ -263,7 +263,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .mm-price-field:focus{border-color:var(--gold);}
 
 /* ── SESSION CAISSE ── */
-.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);pointer-events:none;}
+.session-modal-wrap.active{display:flex;pointer-events:all;}
 .session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
 .session-icon{font-size:44px;margin-bottom:8px;}
 .session-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
@@ -794,7 +795,7 @@ async function showOpenCaisseModal(){
     </div>
     <button class="btn-session-open" onclick="confirmOpenCaisse()">✓ Ouvrir la caisse</button>
   `;
-  document.getElementById('session-modal').style.display = 'flex';
+  document.getElementById('session-modal').classList.add('active');
   setTimeout(() => { const i = document.getElementById('fond-inp'); if(i) i.focus(); }, 100);
 }
 
@@ -816,7 +817,7 @@ async function confirmOpenCaisse(){
 
   currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: sessionData.cashier, date: todayKey() };
   saveSessionToStorage();
-  document.getElementById('session-modal').style.display = 'none';
+  document.getElementById('session-modal').classList.remove('active');
 
   // Show fond badge in header
   const badge = document.getElementById('session-badge-hdr');
@@ -853,9 +854,9 @@ async function showSessions(){
       <span>Date</span><span>Caissier</span><span>Total</span><span>Écart</span>
     </div>
     ${rows}
-    <button class="mcancel" style="margin-top:14px" onclick="document.getElementById('session-modal').style.display='none'">Fermer</button>
+    <button class="mcancel" style="margin-top:14px" onclick="document.getElementById('session-modal').classList.remove('active')">Fermer</button>
   `;
-  document.getElementById('session-modal').style.display = 'flex';
+  document.getElementById('session-modal').classList.add('active');
 }
   if (!SYNC_ENABLED) return;
   try {
@@ -1852,9 +1853,9 @@ function cloturerJournee(){
     <button class="btn-session-close" onclick="confirmerCloture(${total},${count},${cash},${card},${mob},${theorique},'${bizDate}','${now.toLocaleTimeString('fr-TN')}')">
       ✓ Confirmer la clôture
     </button>
-    <button class="mcancel" style="margin-top:8px" onclick="document.getElementById('session-modal').style.display='none'">Annuler</button>
+    <button class="mcancel" style="margin-top:8px" onclick="document.getElementById('session-modal').classList.remove('active')">Annuler</button>
   `;
-  document.getElementById('session-modal').style.display = 'flex';
+  document.getElementById('session-modal').classList.add('active');
   setTimeout(()=>{ const i=document.getElementById('compte-inp'); if(i)i.focus(); },100);
 
   // Live écart calculation
@@ -1903,7 +1904,7 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   });
 
   // Close modal
-  document.getElementById('session-modal').style.display = 'none';
+  document.getElementById('session-modal').classList.remove('active');
   currentSession = null;
   saveSessionToStorage();
   document.getElementById('session-badge-hdr').style.display = 'none';
