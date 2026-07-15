@@ -1418,24 +1418,28 @@ async function loginSuccess(role){
   if(pb)pb.classList.add('on');
   document.getElementById('cs').style.display=payMode==='cash'?'':'none';
   buildCats();buildGrid();renderOrd();
-  setTimeout(()=>{const s=document.getElementById('srch');if(s)s.focus({preventScroll:true});},50);
   if(!sqliteAvailable) flash('⚠ Historique SQLite indisponible — mode session uniquement');
   else flash('✓ Bienvenue, '+u.name+' !');
-  // Restore session if already opened today, otherwise show open button
-  setTimeout(()=>{
-    const saved = loadSessionFromStorage();
-    if(saved){
-      currentSession = saved;
-      const badge = document.getElementById('session-badge-hdr');
-      const disp  = document.getElementById('session-fond-display');
-      if(badge && disp){ disp.textContent = saved.cashier; badge.style.display=''; }
-      flash('✓ Session reprise — ' + saved.cashier + ' · Fond: '+f2(saved.fondInitial)+' DT');
-    } else {
-      showOpenCaisseModal();
-    }
+
+  // Check session synchronously FIRST — before any focus
+  const savedSession = loadSessionFromStorage();
+  if(savedSession){
+    // Session exists → restore it, then focus search
+    currentSession = savedSession;
+    const badge = document.getElementById('session-badge-hdr');
+    const disp  = document.getElementById('session-fond-display');
+    if(badge && disp){ disp.textContent = savedSession.cashier; badge.style.display=''; }
+    flash('✓ Session reprise — ' + savedSession.cashier + ' · Fond: '+f2(savedSession.fondInitial)+' DT');
     updateCaisseButton();
     updBtn();
-  }, 300);
+    // No modal → safe to focus search
+    setTimeout(()=>{const s=document.getElementById('srch');if(s)s.focus({preventScroll:true});},50);
+  } else {
+    // No session → open modal (don't focus search — modal has its own input)
+    updateCaisseButton();
+    updBtn();
+    setTimeout(()=>showOpenCaisseModal(), 50);
+  }
 }
 function logout(){
   if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
