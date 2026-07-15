@@ -554,6 +554,42 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 <div id="print-area"></div>
 
 <script>
+// ╔══════════════════════════════════════════════════════╗
+// ║          CLIENT CONFIGURATION — CHANGE PER CLIENT   ║
+// ╚══════════════════════════════════════════════════════╝
+const CLIENT_CONFIG = {
+  // ── Identity ──────────────────────────────────────────
+  name:        'DOLPHINO',              // Restaurant name (uppercase)
+  tagline:     'Restaurant & Fast Food — POS Pro',
+  logo:        '🐬',                    // Emoji logo on login screen
+  logoLetter:  'D',                     // Letter in header circle
+  city:        'Kelibia, Tunisie',      // City shown on receipts
+  phone:       '+216 52 050 581',       // Developer contact (shown on lock screen)
+  currency:    'DT',                    // Currency label
+
+  // ── Sync / Dashboard ──────────────────────────────────
+  syncEnabled: true,
+  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
+  syncKey:     'DOLPH-TEST-KEY-001',    // ← CHANGE THIS per client
+
+  // ── Users / PINs ──────────────────────────────────────
+  managerName: 'Manager Iheb',
+  managerPin:  '1234',
+  cashierName: 'Iheb',
+  cashierPin:  '0000',
+
+  // ── Kitchen zones ─────────────────────────────────────
+  zone1Cats:   ['Pizza','Chapati','Baguette','Makloub'],
+  zone2Cats:   ['Libanais','Sandwichs','Tacos','Plat','Brik','Panini'],
+  boissonCats: ['Boisson'],
+  zone1Label:  'CUISINE 1 — Pizza / Chapati / Baguette / Makloub',
+  zone2Label:  'CUISINE 2 — Libanais / Sandwichs / Tacos / Plat / Brik',
+};
+
+const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
+const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
+const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
+
 // ═══════════════ DATA ═══════════════
 let MENU={
   "Plat":{icon:"🍽️",items:[
@@ -709,42 +745,6 @@ function decreaseStock(soldItems){
 function getStockDisplay(){
   return loadStock();
 }
-
-// ╔══════════════════════════════════════════════════════╗
-// ║          CLIENT CONFIGURATION — CHANGE PER CLIENT   ║
-// ╚══════════════════════════════════════════════════════╝
-const CLIENT_CONFIG = {
-  // ── Identity ──────────────────────────────────────────
-  name:        'DOLPHINO',              // Restaurant name (uppercase)
-  tagline:     'Restaurant & Fast Food — POS Pro',
-  logo:        '🐬',                    // Emoji logo on login screen
-  logoLetter:  'D',                     // Letter in header circle
-  city:        'Kelibia, Tunisie',      // City shown on receipts
-  phone:       '+216 52 050 581',       // Developer contact (shown on lock screen)
-  currency:    'DT',                    // Currency label
-
-  // ── Sync / Dashboard ──────────────────────────────────
-  syncEnabled: true,
-  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
-  syncKey:     'DOLPH-TEST-KEY-001',    // ← CHANGE THIS per client
-
-  // ── Users / PINs ──────────────────────────────────────
-  managerName: 'Manager Iheb',
-  managerPin:  '1234',
-  cashierName: 'Iheb',
-  cashierPin:  '0000',
-
-  // ── Kitchen zones ─────────────────────────────────────
-  zone1Cats:   ['Pizza','Chapati','Baguette','Makloub'],
-  zone2Cats:   ['Libanais','Sandwichs','Tacos','Plat','Brik','Panini'],
-  boissonCats: ['Boisson'],
-  zone1Label:  'CUISINE 1 — Pizza / Chapati / Baguette / Makloub',
-  zone2Label:  'CUISINE 2 — Libanais / Sandwichs / Tacos / Plat / Brik',
-};
-
-const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
-const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
-const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
 
 // Queue for offline sales — sends when internet returns
 let syncQueue = JSON.parse(localStorage.getItem('dolphino-sync-queue') || '[]');
