@@ -188,7 +188,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .enc:disabled{opacity:.35;cursor:not-allowed;animation:none;}
 
 /* ── MODALS ── */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);animation:fadeIn .18s ease;}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);animation:fadeIn .18s ease;pointer-events:none;}
+.ov[style*="display: flex"],.ov[style*="display:flex"]{pointer-events:all;}
 .mb{background:var(--panel);border:1px solid var(--div);border-radius:16px;padding:22px;width:90vw;max-width:360px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:scaleIn .22s cubic-bezier(.2,.85,.3,1.1);}
 .mb::-webkit-scrollbar{width:3px;}
 .mt{font-size:16px;font-weight:700;margin-bottom:14px;text-align:center;letter-spacing:.2px;}
