@@ -269,7 +269,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .mm-price-field:focus{border-color:var(--gold);}
 
 /* ── REMOTE LOCK ── */
-#remote-lock{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(224,82,82,.12),transparent 60%),var(--bg);z-index:999;display:none;align-items:center;justify-content:center;}
+#remote-lock{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(224,82,82,.12),transparent 60%),var(--bg);z-index:999;display:none;align-items:center;justify-content:center;pointer-events:none;}
+#remote-lock.active{display:flex;pointer-events:all;}
 .remote-lock-box{background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);}
 .remote-lock-icon{font-size:56px;margin-bottom:12px;}
 .remote-lock-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--red);margin-bottom:14px;}
@@ -2135,16 +2136,27 @@ async function checkLicense(){
   try {
     const res  = await fetch(CHECK_URL + '?key=' + SYNC_API_KEY, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
+
+    // ── Apply server config if provided (overrides CLIENT_CONFIG at runtime) ──
+    if(data.config){
+      const cfg = data.config;
+      if(cfg.restaurantName){ const ln=document.querySelector('.logo-name'); if(ln)ln.textContent=cfg.restaurantName; }
+      if(cfg.logo){ const ll=document.querySelector('.login-logo'); if(ll)ll.textContent=cfg.logo; }
+      if(cfg.restaurantCity) CLIENT_CONFIG.city = cfg.restaurantCity;
+      if(cfg.cuisine1Cats)   { CLIENT_CONFIG.zone1Cats=cfg.cuisine1Cats; CLIENT_CONFIG.zone1Label='CUISINE 1 — '+cfg.cuisine1Cats.join(' / '); }
+      if(cfg.cuisine2Cats)   { CLIENT_CONFIG.zone2Cats=cfg.cuisine2Cats; CLIENT_CONFIG.zone2Label='CUISINE 2 — '+cfg.cuisine2Cats.join(' / '); }
+      if(cfg.boissonCats)    CLIENT_CONFIG.boissonCats=cfg.boissonCats;
+      if(cfg.phone)          CLIENT_CONFIG.phone=cfg.phone;
+    }
+
     if(data.ok && data.active === false){
-      // Suspend the app
       licenseOk = false;
       document.getElementById('remote-lock-msg').textContent = data.message || 'Contactez le développeur.';
-      document.getElementById('remote-lock').style.display   = 'flex';
+      document.getElementById('remote-lock').classList.add('active');
       document.getElementById('login-screen').style.display  = 'none';
       document.getElementById('hdr').style.display           = 'none';
       document.getElementById('main').style.display          = 'none';
     } else if(data.active === true && !licenseOk){
-      // Reactivated — reload
       licenseOk = true;
       location.reload();
     }
