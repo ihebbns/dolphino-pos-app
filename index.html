@@ -276,7 +276,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .remote-lock-msg{font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;}
 
 /* ── SESSION CAISSE ── */
-.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .18s ease;}
 .session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
 .session-icon{font-size:44px;margin-bottom:8px;}
 .session-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
@@ -328,11 +328,11 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <div class="user-cards" id="user-list">
       <div class="user-card" onclick="selectUser('manager')">
         <div class="user-avatar" style="background:rgba(200,145,58,.2);color:var(--gold-l)" id="login-manager-avatar">M</div>
-        <div><div class="user-name" id="login-manager-name">Manager Iheb</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
+        <div><div class="user-name" id="login-manager-name">Manager</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
       </div>
       <div class="user-card" onclick="selectUser('caissier')">
         <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--blue)" id="login-cashier-avatar">I</div>
-        <div><div class="user-name" id="login-cashier-name">Iheb</div><div class="user-role">Vente · Impression ticket</div></div>
+        <div><div class="user-name" id="login-cashier-name">Caissier</div><div class="user-role">Vente · Impression ticket</div></div>
       </div>
     </div>
 
@@ -844,6 +844,8 @@ function updateCaisseButton(){
 
 // ── Session modal helpers — created dynamically, never blocks UI ──
 function createSessionModal(innerHtml) {
+  // Never create a modal if user is not logged in
+  if(!currentUser) return;
   destroySessionModal();
   const wrap = document.createElement('div');
   wrap.className = 'session-modal-wrap';
@@ -2151,8 +2153,8 @@ async function checkLicense(){
   }
 }
 
-// Check on startup after 3 seconds, then every 30 minutes
-setTimeout(checkLicense, 3000);
+// Check on startup after 10 seconds (give login time to load), then every 30 minutes
+setTimeout(checkLicense, 10000);
 setInterval(checkLicense, 30 * 60 * 1000);
 
 // ═══════════════ THEME TOGGLE ═══════════════
