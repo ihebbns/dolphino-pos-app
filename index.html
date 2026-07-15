@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dolphino POS Pro v2</title>
+<title id="page-title">POS Pro</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -321,18 +321,18 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">🐬</div>
-    <div class="login-brand">DOLPHINO</div>
-    <div class="login-sub">Restaurant & Fast Food — POS Pro</div>
+    <div class="login-logo" id="login-logo">🐬</div>
+    <div class="login-brand" id="login-brand">DOLPHINO</div>
+    <div class="login-sub" id="login-sub">Restaurant & Fast Food — POS Pro</div>
 
     <div class="user-cards" id="user-list">
       <div class="user-card" onclick="selectUser('manager')">
-        <div class="user-avatar" style="background:rgba(200,145,58,.2);color:var(--gold-l)">M</div>
-        <div><div class="user-name">Manager Iheb</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
+        <div class="user-avatar" style="background:rgba(200,145,58,.2);color:var(--gold-l)" id="login-manager-avatar">M</div>
+        <div><div class="user-name" id="login-manager-name">Manager Iheb</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
       </div>
       <div class="user-card" onclick="selectUser('caissier')">
-        <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--blue)">I</div>
-        <div><div class="user-name">Iheb</div><div class="user-role">Vente · Impression ticket</div></div>
+        <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--blue)" id="login-cashier-avatar">I</div>
+        <div><div class="user-name" id="login-cashier-name">Iheb</div><div class="user-role">Vente · Impression ticket</div></div>
       </div>
     </div>
 
@@ -359,8 +359,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 <!-- ══ HEADER ══ -->
 <header id="hdr" style="display:none">
   <div class="logo">
-    <div class="logo-d">D</div>
-    <div><div class="logo-name">DOLPHINO</div><div class="logo-tag">POS Pro</div></div>
+    <div class="logo-d" id="hdr-logo-letter">D</div>
+    <div><div class="logo-name" id="hdr-logo-name">DOLPHINO</div><div class="logo-tag">POS Pro</div></div>
   </div>
   <div style="text-align:center"><div id="clock">--:--:--</div><div id="datel"></div></div>
   <div class="hdr-right">
@@ -372,6 +372,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-menu-manage" onclick="showMenuManage()" style="display:none">🛠️ Gérer le menu</button>
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
+    <button class="hdr-btn" id="btn-pins" onclick="showPinManager()" style="display:none">🔑 PINs</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
@@ -653,8 +654,8 @@ const CAT_ICONS={
 };
 
 const USERS={
-  manager:{pin:'1234',name:'Manager',role:'Manager',color:'var(--gold-l)',bg:'rgba(200,145,58,.2)',letter:'M',isManager:true},
-  caissier:{pin:'0000',name:'Iheb',role:'Caissier',color:'var(--blue)',bg:'rgba(74,144,217,.2)',letter:'I',isManager:false}
+  manager:{pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',color:'var(--gold-l)',bg:'rgba(200,145,58,.2)',letter:CLIENT_CONFIG.managerName.charAt(0),isManager:true},
+  caissier:{pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',color:'var(--blue)',bg:'rgba(74,144,217,.2)',letter:CLIENT_CONFIG.cashierName.charAt(0),isManager:false}
 };
 
 // ═══════════════ STATE ═══════════════
@@ -707,13 +708,41 @@ function getStockDisplay(){
   return loadStock();
 }
 
-// ═══════════════════════════════════════════════════
-// SAAS SYNC CONFIG
-// Set SYNC_ENABLED=true and fill in your details
-// ═══════════════════════════════════════════════════
-const SYNC_ENABLED  = true;
-const SYNC_API_URL  = 'https://dolphino-saas.vercel.app/api/sync';
-const SYNC_API_KEY  = 'DOLPH-TEST-KEY-001'; // change per client
+// ╔══════════════════════════════════════════════════════╗
+// ║          CLIENT CONFIGURATION — CHANGE PER CLIENT   ║
+// ╚══════════════════════════════════════════════════════╝
+const CLIENT_CONFIG = {
+  // ── Identity ──────────────────────────────────────────
+  name:        'DOLPHINO',              // Restaurant name (uppercase)
+  tagline:     'Restaurant & Fast Food — POS Pro',
+  logo:        '🐬',                    // Emoji logo on login screen
+  logoLetter:  'D',                     // Letter in header circle
+  city:        'Kelibia, Tunisie',      // City shown on receipts
+  phone:       '+216 52 050 581',       // Developer contact (shown on lock screen)
+  currency:    'DT',                    // Currency label
+
+  // ── Sync / Dashboard ──────────────────────────────────
+  syncEnabled: true,
+  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
+  syncKey:     'DOLPH-TEST-KEY-001',    // ← CHANGE THIS per client
+
+  // ── Users / PINs ──────────────────────────────────────
+  managerName: 'Manager Iheb',
+  managerPin:  '1234',
+  cashierName: 'Iheb',
+  cashierPin:  '0000',
+
+  // ── Kitchen zones ─────────────────────────────────────
+  zone1Cats:   ['Pizza','Chapati','Baguette','Makloub'],
+  zone2Cats:   ['Libanais','Sandwichs','Tacos','Plat','Brik','Panini'],
+  boissonCats: ['Boisson'],
+  zone1Label:  'CUISINE 1 — Pizza / Chapati / Baguette / Makloub',
+  zone2Label:  'CUISINE 2 — Libanais / Sandwichs / Tacos / Plat / Brik',
+};
+
+const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
+const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
+const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
 
 // Queue for offline sales — sends when internet returns
 let syncQueue = JSON.parse(localStorage.getItem('dolphino-sync-queue') || '[]');
@@ -1166,8 +1195,8 @@ function renderMenuManage(){
   list.innerHTML=data.items.map(it=>{
     if(it.v){
       return `<div class="mm-row">
-        <div class="mm-em">${it.e}</div>
-        <div class="mm-name">${it.name}</div>
+        <input type="text" style="width:34px;text-align:center;font-size:16px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:3px;outline:none;flex-shrink:0;" value="${it.e}" autocomplete="off" onchange="updateItemEmoji('${c}','${it.id}',this.value)">
+        <input type="text" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px 8px;color:var(--txt);font-size:12px;font-weight:500;outline:none;min-width:0;" value="${it.name}" autocomplete="off" onchange="updateItemName('${c}','${it.id}',this.value)">
         <span class="mm-var-lbl">${it.v[0].l}</span>
         <input type="number" step="0.1" class="mm-price-input" value="${it.v[0].p}" inputmode="decimal" autocomplete="off" onchange="updateVariantPrice('${c}','${it.id}',0,this.value)">
         <span class="mm-var-lbl">${it.v[1].l}</span>
@@ -1176,8 +1205,8 @@ function renderMenuManage(){
       </div>`;
     }
     return `<div class="mm-row">
-      <div class="mm-em">${it.e}</div>
-      <div class="mm-name">${it.name}</div>
+      <input type="text" style="width:34px;text-align:center;font-size:16px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:3px;outline:none;flex-shrink:0;" value="${it.e}" autocomplete="off" onchange="updateItemEmoji('${c}','${it.id}',this.value)">
+      <input type="text" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px 8px;color:var(--txt);font-size:12px;font-weight:500;outline:none;min-width:0;" value="${it.name}" autocomplete="off" onchange="updateItemName('${c}','${it.id}',this.value)">
       <input type="number" step="0.1" class="mm-price-input" value="${it.p}" inputmode="decimal" autocomplete="off" onchange="updateItemPrice('${c}','${it.id}',this.value)">
       <span style="font-size:10px;color:var(--muted)">DT</span>
       <div class="mm-del" onclick="deleteMenuItem('${c}','${it.id}')">✕</div>
@@ -1211,6 +1240,17 @@ function updateItemPrice(c,id,val){
   if(isNaN(p)||p<0){alert('Prix invalide.');renderMenuManage();return;}
   const it=MENU[c].items.find(x=>x.id===id);
   if(it){it.p=p;saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Prix mis à jour');}
+}
+function updateItemName(c,id,val){
+  const name=val.trim();
+  if(!name){alert('Nom invalide.');renderMenuManage();return;}
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.name=name;saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Nom mis à jour');}
+}
+function updateItemEmoji(c,id,val){
+  const emoji=val.trim()||'🍽️';
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.e=emoji;saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Icône mis à jour');}
 }
 function updateVariantPrice(c,id,idx,val){
   const p=parseFloat(val);
@@ -1350,10 +1390,12 @@ async function loginSuccess(role){
     document.getElementById('btn-dash').style.display='';
     document.getElementById('btn-menu-manage').style.display='';
     document.getElementById('btn-cloturer').style.display='';
+    document.getElementById('btn-pins').style.display='';
   }else{
     document.getElementById('btn-dash').style.display='none';
     document.getElementById('btn-menu-manage').style.display='none';
     document.getElementById('btn-cloturer').style.display='none';
+    document.getElementById('btn-pins').style.display='none';
   }
   // Reset session badge
   document.getElementById('session-badge-hdr').style.display='none';
@@ -1648,11 +1690,11 @@ function autoPrintAll(od){
 // Zone 1 : Pizza + Chapati + Baguette + Makloub
 // Zone 2 : Libanais + Sandwichs + Tacos + Plat + Brik + Panini
 // Boisson : NO kitchen ticket — client ticket only
-const ZONE1_CATS=['Pizza','Chapati','Baguette','Makloub'];
-const ZONE2_CATS=['Libanais','Sandwichs','Tacos','Plat','Brik','Panini'];
-const BOISSON_CATS=['Boisson'];
-const ZONE1_LABEL='CUISINE 1 — Pizza / Chapati / Baguette / Makloub';
-const ZONE2_LABEL='CUISINE 2 — Libanais / Sandwichs / Tacos / Plat / Brik';
+const ZONE1_CATS  = CLIENT_CONFIG.zone1Cats;
+const ZONE2_CATS  = CLIENT_CONFIG.zone2Cats;
+const BOISSON_CATS= CLIENT_CONFIG.boissonCats;
+const ZONE1_LABEL = CLIENT_CONFIG.zone1Label;
+const ZONE2_LABEL = CLIENT_CONFIG.zone2Label;
 
 function kitchenTicketHTML(od, zoneItems, zoneLabel){
   const typeLabel={place:'Sur place',take:'Emporter',del:'Livraison'};
@@ -1995,6 +2037,82 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   flash('🔒 Caisse clôturée — ' + ecartMsg);
 }
 
+// ═══════════════ PIN MANAGER ═══════════════
+const PIN_KEY = 'dolphino-pins-v1';
+
+function loadPins(){
+  try{
+    const raw = localStorage.getItem(PIN_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  // Default PINs from config
+  return { manager: CLIENT_CONFIG.managerPin, caissier: CLIENT_CONFIG.cashierPin };
+}
+
+function savePins(pins){
+  localStorage.setItem(PIN_KEY, JSON.stringify(pins));
+  // Update live USERS object
+  USERS.manager.pin  = pins.manager;
+  USERS.caissier.pin = pins.caissier;
+}
+
+function initPins(){
+  const pins = loadPins();
+  USERS.manager.pin  = pins.manager;
+  USERS.caissier.pin = pins.caissier;
+}
+
+function showPinManager(){
+  if(!USERS[currentUser].isManager){ alert('Accès réservé au Manager.'); return; }
+  const pins = loadPins();
+  createSessionModal(`
+    <div class="session-icon">🔑</div>
+    <div class="session-title">Gestion des PINs</div>
+    <div class="session-sub">Modifiez les codes PIN. Min. 4 chiffres.</div>
+
+    <div class="session-input-row">
+      <label>PIN Manager (actuel: ••••)</label>
+      <input class="session-inp" type="password" id="pin-mgr-new"
+        placeholder="Nouveau PIN manager" inputmode="numeric"
+        maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px">
+    </div>
+    <div class="session-input-row" style="margin-top:10px">
+      <label>PIN Caissier (actuel: ••••)</label>
+      <input class="session-inp" type="password" id="pin-csr-new"
+        placeholder="Nouveau PIN caissier" inputmode="numeric"
+        maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px">
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin:8px 0 14px;padding:8px;background:var(--card);border-radius:6px;">
+      💡 Laissez vide pour ne pas modifier. Min. 4 chiffres, max. 6.
+    </div>
+    <button class="btn-session-open" onclick="savePinManager()">✓ Enregistrer les PINs</button>
+    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Annuler</button>
+  `);
+  setTimeout(()=>{ document.getElementById('pin-mgr-new')?.focus(); },100);
+}
+
+function savePinManager(){
+  const mgrRaw = (document.getElementById('pin-mgr-new')?.value || '').trim();
+  const csrRaw = (document.getElementById('pin-csr-new')?.value || '').trim();
+  const pins   = loadPins();
+
+  if(mgrRaw !== ''){
+    if(!/^\d{4,6}$/.test(mgrRaw)){ alert('PIN Manager invalide — 4 à 6 chiffres requis.'); return; }
+    pins.manager = mgrRaw;
+  }
+  if(csrRaw !== ''){
+    if(!/^\d{4,6}$/.test(csrRaw)){ alert('PIN Caissier invalide — 4 à 6 chiffres requis.'); return; }
+    pins.caissier = csrRaw;
+  }
+
+  savePins(pins);
+  destroySessionModal();
+  flash('✓ PINs mis à jour avec succès');
+}
+
+// Init PINs on startup
+initPins();
+
 function showHistorique(){
   if(!hist.length){alert('Aucune vente cette session.');return;}
   const tl={place:'Sur place',take:'Emporter',del:'Livraison'};
@@ -2052,6 +2170,32 @@ function toggleTheme(){
 }
 // Apply saved theme on load
 applyTheme(localStorage.getItem(THEME_KEY)||'dark');
+
+// ── Apply CLIENT_CONFIG to DOM ─────────────────────────
+(function applyConfig(){
+  // Page title
+  document.title = CLIENT_CONFIG.name + ' POS Pro';
+  // Login screen
+  const loginLogo  = document.getElementById('login-logo');
+  const loginBrand = document.getElementById('login-brand');
+  const loginSub   = document.getElementById('login-sub');
+  if(loginLogo)  loginLogo.textContent  = CLIENT_CONFIG.logo;
+  if(loginBrand) loginBrand.textContent = CLIENT_CONFIG.name;
+  if(loginSub)   loginSub.textContent   = CLIENT_CONFIG.tagline;
+  // Header
+  const hdrLetter = document.getElementById('hdr-logo-letter');
+  const hdrName   = document.getElementById('hdr-logo-name');
+  if(hdrLetter) hdrLetter.textContent = CLIENT_CONFIG.logoLetter;
+  if(hdrName)   hdrName.textContent   = CLIENT_CONFIG.name;
+  // Login cards
+  const managerCard = document.getElementById('login-manager-name');
+  const cashierCard = document.getElementById('login-cashier-name');
+  if(managerCard) managerCard.textContent = CLIENT_CONFIG.managerName;
+  if(cashierCard) cashierCard.textContent = CLIENT_CONFIG.cashierName;
+  // Remote lock contact
+  const lockPhone = document.getElementById('remote-lock-phone');
+  if(lockPhone) lockPhone.textContent = CLIENT_CONFIG.phone;
+})();
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
