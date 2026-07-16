@@ -17,27 +17,19 @@ const {
 let mainWindow;
 
 // ── Resolve client index.html ─────────────────────────────────────────
-// In packaged app: core/ sits next to the client's index.html
-// Structure: clients/<name>/index.html + core/main.js + core/database.js + core/preload.js
-// At build time, electron-builder bundles core/* + client index.html together.
-// The CLIENT_DIR env or default '../' relative to core/ finds index.html.
 function resolveClientIndex() {
-  // When packaged, index.html is one level up from core/
+  // In packaged app (asar): index.html is one level up from core/
+  // Structure: app.asar/core/main.js + app.asar/index.html
   const upOne = path.join(__dirname, '..', 'index.html');
-  if (fs.existsSync(upOne)) return upOne;
-
-  // Dev fallback: check CLIENT_DIR env variable
+  
+  // Dev mode: check CLIENT_DIR env variable first
   if (process.env.CLIENT_DIR) {
-    const envPath = path.join(process.env.CLIENT_DIR, 'index.html');
+    const envPath = path.resolve(process.env.CLIENT_DIR, 'index.html');
     if (fs.existsSync(envPath)) return envPath;
   }
 
-  // Last fallback: same directory
-  const sameDirPath = path.join(__dirname, 'index.html');
-  if (fs.existsSync(sameDirPath)) return sameDirPath;
-
-  // Ultimate fallback for old structure
-  return path.join(__dirname, '..', 'index.html');
+  // Always return the expected packaged path (fs.existsSync unreliable in asar)
+  return upOne;
 }
 
 function createWindow() {

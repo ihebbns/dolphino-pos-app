@@ -415,6 +415,8 @@ function elapsed(timeStr) {
 // ═══════════════ RENDER ENGINE ═══════════════
 function render() {
   if (!currentUser) { renderLogin(); return; }
+  // Hide login overlay once logged in
+  document.getElementById('login').style.display = 'none';
   renderHeader();
   if (activeTableId === null) { renderTablePlan(); } else { renderOrderView(); }
   renderStatusBar();
@@ -424,6 +426,7 @@ function render() {
 let pinBuffer = '', pinTarget = null;
 
 function renderLogin() {
+  document.getElementById('login').style.display = 'flex';
   document.getElementById('hdr').style.display = 'none';
   document.getElementById('main').style.display = 'none';
   document.getElementById('statusbar').style.display = 'none';
@@ -1241,7 +1244,7 @@ async function hydrateState() {
 hydrateState();
 
 // ═══════════════ START ═══════════════
-render();
+try { render(); } catch(e) { document.body.innerHTML = '<pre style="color:red;padding:20px">ERREUR: ' + e.message + '\n' + e.stack + '</pre>'; }
 
 </script>
 </body>
