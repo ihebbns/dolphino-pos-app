@@ -57,10 +57,10 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .section-tab{padding:7px 16px;border-radius:6px;font-size:11px;font-weight:600;color:var(--muted);border:1px solid transparent;transition:all .12s}
 .section-tab:hover{color:var(--txt);background:var(--card)}
 .section-tab.on{background:var(--gold-dim);border-color:rgba(200,145,58,.3);color:var(--gold-l)}
-#table-grid{flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;align-content:start}
+#table-grid{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;align-content:start}
 
 /* ── TABLE CARD ── */
-.tbl{position:relative;border-radius:12px;padding:16px 12px;text-align:center;border:2px solid var(--div);background:var(--card);transition:all .15s;cursor:pointer;animation:slideUp .3s ease both}
+.tbl{position:relative;border-radius:14px;padding:20px 16px;text-align:center;border:2px solid var(--div);background:var(--card);transition:all .15s;cursor:pointer;animation:slideUp .3s ease both;min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .tbl:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
 .tbl-free{border-color:var(--div);opacity:.7}
 .tbl-free:hover{opacity:1;border-color:var(--gold-dim)}
@@ -73,11 +73,11 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .tbl-dot-green{background:var(--green);animation:pulse 2s infinite}
 .tbl-dot-orange{background:var(--orange);animation:pulse 2s infinite}
 .tbl-dot-purple{background:var(--purple)}
-.tbl-icon{font-size:24px;margin-bottom:4px}
-.tbl-num{font-size:14px;font-weight:700}
-.tbl-info{font-size:10px;color:var(--muted);margin-top:3px}
-.tbl-total{font-size:15px;font-weight:700;color:var(--gold-l);margin-top:5px}
-.tbl-timer{font-size:9px;color:var(--muted);margin-top:2px}
+.tbl-icon{font-size:32px;margin-bottom:6px}
+.tbl-num{font-size:16px;font-weight:700}
+.tbl-info{font-size:11px;color:var(--muted);margin-top:4px}
+.tbl-total{font-size:17px;font-weight:700;color:var(--gold-l);margin-top:6px}
+.tbl-timer{font-size:10px;color:var(--muted);margin-top:3px}
 .tbl-server{font-size:9px;color:var(--blue);margin-top:2px}
 
 /* ── ORDER PANEL (right) ── */
@@ -404,9 +404,13 @@ function nowFull() { return new Date().toLocaleTimeString('fr-TN', { hour:'2-dig
 function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function elapsed(timeStr) {
   if (!timeStr) return '';
-  const [h, m] = timeStr.split(':').map(Number);
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return '';
+  const h = parseInt(parts[0]) || 0;
+  const m = parseInt(parts[1]) || 0;
   const nowD = new Date();
   const mins = (nowD.getHours() * 60 + nowD.getMinutes()) - (h * 60 + m);
+  if (isNaN(mins) || mins < 0) return '';
   if (mins < 1) return '< 1 min';
   if (mins < 60) return mins + ' min';
   return Math.floor(mins/60) + 'h' + String(mins%60).padStart(2,'0');
