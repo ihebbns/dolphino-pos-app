@@ -516,7 +516,10 @@ function renderHeader() {
       <div class="hdr-badge hdr-badge-green">🪑 ${occupied}/${tables.length}</div>
       ${openTotal > 0 ? `<div class="hdr-badge" style="background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);color:var(--gold-l)">${f(openTotal)} ${CLIENT_CONFIG.currency}</div>` : ''}
       ${currentSession ? `<div class="hdr-badge hdr-badge-green">✓ ${currentSession.cashier}</div>` : ''}
+      ${user.isManager ? `<button class="hdr-btn" onclick="showMenuManage()">🛠️ Menu</button>` : ''}
       ${user.isManager ? `<button class="hdr-btn" onclick="showDashboard()">📊</button>` : ''}
+      ${user.isManager && currentSession ? `<button class="hdr-btn" style="border-color:rgba(224,82,82,.3);color:var(--red)" onclick="showCloseCaisse()">🔒 Clôturer</button>` : ''}
+      ${user.isManager && !currentSession ? `<button class="hdr-btn" style="border-color:rgba(61,184,122,.3);color:var(--green)" onclick="showOpenSession()">💰 Ouvrir</button>` : ''}
       <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme">${document.body.classList.contains('light')?'🌙':'☀️'}</button>
       <button class="hdr-btn" onclick="logout()">⏻ ${user.name||''}</button>
     </div>`;
@@ -1242,6 +1245,164 @@ async function hydrateState() {
   } catch(e) { console.warn('Hydrate failed:', e); }
 }
 hydrateState();
+
+// ═══════════════ CLÔTURE DE CAISSE ═══════════════
+function showCloseCaisse() {
+  if (!currentSession) return;
+  const todaySales = history.filter(s => s.businessDate === todayKey());
+  const totalSales = todaySales.reduce((s,x) => s + (x.g||0), 0);
+  const cashSales = todaySales.filter(s => s.payMode === 'cash').reduce((s,x) => s + (x.g||0), 0);
+  const cardSales = todaySales.filter(s => s.payMode === 'card').reduce((s,x) => s + (x.g||0), 0);
+  const mobSales = todaySales.filter(s => s.payMode === 'mob').reduce((s,x) => s + (x.g||0), 0);
+  const theorique = currentSession.fondInitial + cashSales;
+
+  showModal(`
+    <div class="modal-title">🔒 Clôture de Caisse</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">${currentSession.cashier} · Ouvert à ${currentSession.openedAt}</div>
+    <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">Fond initial</span><span>${f(currentSession.fondInitial)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">Ventes total</span><span style="color:var(--gold-l);font-weight:700">${f(totalSales)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">💵 Espèces</span><span>${f(cashSales)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">💳 Carte</span><span>${f(cardSales)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">📱 Mobile</span><span>${f(mobSales)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">Commandes</span><span>${todaySales.length}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;font-weight:700"><span>Théorique en caisse</span><span style="color:var(--green)">${f(theorique)}</span></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Montant compté en caisse (DT)</label>
+      <input id="cloture-montant" type="number" step="0.5" placeholder="0.000" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:18px;font-weight:700;text-align:center;outline:none" autocomplete="off">
+    </div>
+    <button onclick="confirmCloseCaisse(${totalSales},${cashSales},${cardSales},${mobSales},${todaySales.length},${theorique})" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--red),#c44);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">🔒 Confirmer la clôture</button>
+    <button class="modal-close" onclick="closeModal()">Annuler</button>
+  `);
+  setTimeout(() => document.getElementById('cloture-montant')?.focus(), 100);
+}
+
+function confirmCloseCaisse(totalSales, cashSales, cardSales, mobSales, ordersCount, theorique) {
+  const montant = parseFloat(document.getElementById('cloture-montant')?.value) || 0;
+  const ecart = montant - theorique;
+
+  const clotureData = {
+    businessDate: todayKey(),
+    cashier: currentSession.cashier,
+    fondInitial: currentSession.fondInitial,
+    totalSales, cashSales, cardSales, mobSales, ordersCount,
+    montantCompte: montant, theorique, ecart,
+    closedAt: now(),
+  };
+
+  // Save locally
+  if (window.electronAPI?.closeSession) window.electronAPI.closeSession(currentSession.id, clotureData);
+
+  // Sync clôture to server
+  syncCloture(clotureData);
+
+  // Clear session
+  currentSession = null;
+  saveSession();
+  closeModal();
+  render();
+  flash(`🔒 Caisse clôturée — Écart: ${ecart >= 0 ? '+' : ''}${f(ecart)} ${CLIENT_CONFIG.currency}`);
+}
+
+async function syncCloture(data) {
+  if (!SYNC_ENABLED) return;
+  const url = SYNC_API_URL.replace('/api/sync', '/api/cloture');
+  try {
+    await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':SYNC_API_KEY}, body:JSON.stringify(data) });
+  } catch(e) { /* queue for later if needed */ }
+}
+
+// ═══════════════ MENU MANAGEMENT (Manager) ═══════════════
+function showMenuManage() {
+  const user = USERS[currentUser] || {};
+  if (!user.isManager) { flash('🔒 Accès réservé au Manager'); return; }
+  const cats = Object.keys(MENU);
+  let selectedCat = cats[0] || '';
+
+  function renderMenuModal() {
+    const items = MENU[selectedCat]?.items || [];
+    showModal(`
+      <div class="modal-title">🛠️ Gérer le Menu</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        ${cats.map(c => `<button class="cat-chip${c===selectedCat?' on':''}" onclick="mmSelectCat('${c}')">${MENU[c].icon} ${c}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <input id="mm-new-cat" placeholder="Nouvelle catégorie" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+        <input id="mm-new-cat-icon" placeholder="🍽️" style="width:40px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:14px;text-align:center;outline:none">
+        <button class="op-btn" style="padding:8px 12px" onclick="mmAddCat()">+ Cat</button>
+      </div>
+      <div style="max-height:200px;overflow-y:auto;margin-bottom:12px">
+        ${items.length===0?'<div style="text-align:center;color:var(--muted);padding:16px">Aucun article</div>':''}
+        ${items.map((it,i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid var(--div)">
+            <span style="font-size:16px;width:24px">${it.e}</span>
+            <span style="flex:1;font-size:12px">${it.name}</span>
+            <input type="number" step="0.5" value="${it.p||0}" onchange="mmUpdatePrice('${selectedCat}',${i},this.value)" style="width:60px;background:var(--card);border:1px solid var(--div);border-radius:4px;padding:4px;color:var(--gold-l);font-size:12px;font-weight:700;text-align:right;outline:none">
+            <button class="oi-del" onclick="mmDeleteItem('${selectedCat}',${i})">✕</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="border-top:1px solid var(--div);padding-top:12px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px">AJOUTER UN ARTICLE</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input id="mm-new-emoji" placeholder="🍕" style="width:40px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:14px;text-align:center;outline:none">
+          <input id="mm-new-name" placeholder="Nom article" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+          <input id="mm-new-price" type="number" step="0.5" placeholder="Prix" style="width:60px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+        </div>
+        <button class="pay-btn pay-btn-green" style="width:100%;padding:10px" onclick="mmAddItem('${selectedCat}')">+ Ajouter</button>
+      </div>
+      <button class="modal-close" onclick="closeModal()">Fermer</button>
+    `, 'menu-manage');
+  }
+
+  // Expose functions globally for modal buttons
+  window.mmSelectCat = function(c) { selectedCat = c; renderMenuModal(); };
+  window.mmAddCat = function() {
+    const name = document.getElementById('mm-new-cat')?.value.trim();
+    const icon = document.getElementById('mm-new-cat-icon')?.value.trim() || '🍽️';
+    if (!name) return;
+    if (MENU[name]) { flash('Catégorie existe déjà'); return; }
+    MENU[name] = { icon, items: [] };
+    cats.push(name);
+    selectedCat = name;
+    saveMenuToStorage();
+    renderMenuModal();
+    flash('✓ Catégorie "' + name + '" créée');
+  };
+  window.mmDeleteItem = function(cat, idx) {
+    MENU[cat].items.splice(idx, 1);
+    saveMenuToStorage();
+    renderMenuModal();
+  };
+  window.mmUpdatePrice = function(cat, idx, val) {
+    MENU[cat].items[idx].p = parseFloat(val) || 0;
+    saveMenuToStorage();
+  };
+  window.mmAddItem = function(cat) {
+    const emoji = document.getElementById('mm-new-emoji')?.value.trim() || '🍽️';
+    const name = document.getElementById('mm-new-name')?.value.trim();
+    const price = parseFloat(document.getElementById('mm-new-price')?.value) || 0;
+    if (!name) { flash('Nom requis'); return; }
+    const id = cat.slice(0,2).toLowerCase() + (MENU[cat].items.length + 1);
+    MENU[cat].items.push({ id, name, e: emoji, p: price, zone: CLIENT_CONFIG.zone1Cats.includes(cat) ? 'bar' : 'cuisine' });
+    saveMenuToStorage();
+    renderMenuModal();
+    flash('✓ "' + name + '" ajouté');
+  };
+
+  renderMenuModal();
+}
+
+const MENU_STORE_KEY = 'servio-cafe-menu-v1';
+function saveMenuToStorage() { localStorage.setItem(MENU_STORE_KEY, JSON.stringify(MENU)); }
+function loadMenuFromStorage() {
+  try {
+    const raw = localStorage.getItem(MENU_STORE_KEY);
+    if (raw) { const m = JSON.parse(raw); if (m && Object.keys(m).length) MENU = m; }
+  } catch(e) {}
+}
+loadMenuFromStorage();
 
 // ═══════════════ START ═══════════════
 try { render(); } catch(e) { document.body.innerHTML = '<pre style="color:red;padding:20px">ERREUR: ' + e.message + '\n' + e.stack + '</pre>'; }
