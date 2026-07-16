@@ -9,7 +9,9 @@
  * POST /build
  *   Body: { name, city, logo, logoLetter, tagline, phone, currency,
  *           syncKey, managerName, managerPin, cashierName, cashierPin,
- *           menu (optional), zone1Cats, zone2Cats, boissonCats }
+ *           menu (optional), zone1Cats, zone2Cats, boissonCats,
+ *           businessType ('fastfood'|'cafe'), tableCount, printEnabled,
+ *           iconBase64 (optional) }
  *   Returns: { ok, exePath, safeName } or { ok:false, error }
  *
  * GET /status
@@ -29,8 +31,8 @@ const POS_DIR     = __dirname;
 const CLIENTS_DIR = path.join(POS_DIR, 'clients');
 const CORE_DIR    = path.join(POS_DIR, 'core');
 const PKG_JSON    = path.join(POS_DIR, 'package.json');
-const TEMPLATE    = path.join(CLIENTS_DIR, 'dolphino', 'index.html');
-const TEMPLATE_CAFE = path.join(CLIENTS_DIR, 'dolphino', 'index-cafe.html');
+const TEMPLATE    = path.join(POS_DIR, 'templates', 'index-fastfood.html');
+const TEMPLATE_CAFE = path.join(POS_DIR, 'templates', 'index-cafe.html');
 
 let building   = false;
 let lastBuild  = null;
@@ -341,7 +343,6 @@ server.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════════╗`);
   console.log(`║  ⚡ SERVIO OS — Build Server               ║`);
   console.log(`║  🌐 http://localhost:${PORT}                  ║`);
-  console.log(`║  📂 POS Dir: ${POS_DIR.slice(-40).padEnd(40)}║`);
   console.log(`╚════════════════════════════════════════════╝\n`);
   console.log(`Endpoints:`);
   console.log(`  POST /build   — Build a client EXE`);
