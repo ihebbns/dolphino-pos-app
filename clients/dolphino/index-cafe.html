@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">Café POS</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#080604;--panel:#0F0C08;--card:#181310;--card-h:#201A12;
+  --gold:#C8913A;--gold-l:#E8A84C;--gold-dim:rgba(200,145,58,.1);
+  --txt:#F0E8D8;--muted:#7A6E5F;--div:#231C12;
+  --green:#3DB87A;--red:#E05252;--blue:#4A90D9;--orange:#E8882A;
+  --r:9px;
+}
+body.light{
+  --bg:#F5F0E8;--panel:#FFFFFF;--card:#F0EBE0;--card-h:#E8E0D0;
+  --gold:#B8782A;--gold-l:#A06820;--gold-dim:rgba(184,120,42,.1);
+  --txt:#1A1208;--muted:#8A7A6A;--div:#DDD5C5;
+  --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
+input,textarea,select{font-family:inherit;}
+button{-webkit-tap-highlight-color:transparent;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="print-area" style="display:none"></div>
+<script>
+// ╔══════════════════════════════════════════════════════╗
+// ║    CAFÉ / RESTAURANT POS — TABLE MANAGEMENT         ║
+// ║    CLIENT CONFIGURATION — CHANGE PER CLIENT         ║
+// ╚══════════════════════════════════════════════════════╝
+const CLIENT_CONFIG = {
+  name:        'DOLPHINO',
+  tagline:     'Café & Restaurant — POS Pro',
+  logo:        '☕',
+  logoLetter:  'D',
+  city:        'Kelibia, Tunisie',
+  phone:       '+216 52 050 581',
+  currency:    'DT',
+  syncEnabled: true,
+  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
+  syncKey:     'DOLPH-TEST-KEY-001',
+  managerName: 'Manager',
+  managerPin:  '1234',
+  cashierName: 'Caissier',
+  cashierPin:  '0000',
+  tableCount:  12,
+  printEnabled: true,  // false = no ticket printing (some cafés work without)
+};
+
+const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
+const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
+const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
+
+// ═══════════════ MENU DATA ═══════════════
+let MENU = {
+  "Café":{icon:"☕",items:[
+    {id:"cf1",name:"Express",e:"☕",p:2},
+    {id:"cf2",name:"Cappuccino",e:"☕",p:4},
+    {id:"cf3",name:"Café au lait",e:"☕",p:3},
+    {id:"cf4",name:"Café Crème",e:"☕",p:3.5},
+    {id:"cf5",name:"Américano",e:"☕",p:3.5},
+    {id:"cf6",name:"Noisette",e:"☕",p:2.5},
+    {id:"cf7",name:"Direct",e:"☕",p:1.5}
+  ]},
+  "Thé":{icon:"🍵",items:[
+    {id:"th1",name:"Thé Vert",e:"🍵",p:2},
+    {id:"th2",name:"Thé Rouge",e:"🍵",p:2},
+    {id:"th3",name:"Thé à la Menthe",e:"🍵",p:2.5},
+    {id:"th4",name:"Thé au Pin",e:"🍵",p:3}
+  ]},
+  "Jus":{icon:"🧃",items:[
+    {id:"ju1",name:"Orange Pressé",e:"🍊",p:4},
+    {id:"ju2",name:"Citronnade",e:"🍋",p:3.5},
+    {id:"ju3",name:"Fraise",e:"🍓",p:5},
+    {id:"ju4",name:"Banane",e:"🍌",p:4.5},
+    {id:"ju5",name:"Cocktail",e:"🥤",p:5.5}
+  ]},
+  "Boisson":{icon:"🥤",items:[
+    {id:"bv1",name:"Eau 0.5L",e:"💧",p:1},
+    {id:"bv2",name:"Eau 1L",e:"💧",p:1.5},
+    {id:"bv3",name:"Coca Cola",e:"🥤",p:2.5},
+    {id:"bv4",name:"Fanta",e:"🥤",p:2.5},
+    {id:"bv5",name:"Boga",e:"🥤",p:2}
+  ]},
+  "Chicha":{icon:"💨",items:[
+    {id:"ch1",name:"Chicha Simple",e:"💨",p:8},
+    {id:"ch2",name:"Chicha Double",e:"💨",p:12},
+    {id:"ch3",name:"Charbon Sup.",e:"🔥",p:2}
+  ]},
+  "Pâtisserie":{icon:"🥐",items:[
+    {id:"pt1",name:"Croissant",e:"🥐",p:2},
+    {id:"pt2",name:"Pain au chocolat",e:"🍫",p:2.5},
+    {id:"pt3",name:"Gâteau",e:"🍰",p:4},
+    {id:"pt4",name:"Crêpe",e:"🥞",p:4.5}
+  ]}
+};
+
+// ═══════════════ STATE ═══════════════
+const USERS = {
+  manager:{pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',isManager:true},
+  caissier:{pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',isManager:false}
+};
+
+let currentUser = null;
+let tables = []; // Array of { id, items:[], total, openedAt, status:'free'|'occupied' }
+let activeTable = null; // currently selected table index
+let cat = Object.keys(MENU)[0];
+let orderNum = 1;
+const TABLES_KEY = 'cafe-tables-v1';
+const STATE_KEY = 'cafe-state-v1';
+
+// Initialize tables
+function initTables() {
+  const saved = localStorage.getItem(TABLES_KEY);
+  if (saved) {
+    try { tables = JSON.parse(saved); return; } catch(e) {}
+  }
+  tables = [];
+  for (let i = 0; i < CLIENT_CONFIG.tableCount; i++) {
+    tables.push({ id: i+1, items: [], total: 0, openedAt: null, status: 'free' });
+  }
+}
+initTables();
+
+function saveTables() {
+  localStorage.setItem(TABLES_KEY, JSON.stringify(tables));
+}
+
+function f(n) { return Number(n).toFixed(3); }
+function now() { return new Date().toLocaleTimeString('fr-TN', {hour:'2-digit',minute:'2-digit'}); }
+function todayKey() {
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ═══════════════ RENDER ENGINE ═══════════════
+const $ = (id) => document.getElementById(id);
+const app = $('app');
+
+function render() {
+  if (!currentUser) { renderLogin(); return; }
+  if (activeTable === null) { renderTables(); return; }
+  renderTableOrder();
+}
+
+// ═══════════════ LOGIN SCREEN ═══════════════
+let pinBuffer = '';
+let pinTarget = null;
+
+function renderLogin() {
+  app.innerHTML = `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,rgba(200,145,58,.08),transparent 55%),var(--bg);">
+    <div style="background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:38px 32px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+      <div style="font-size:46px;margin-bottom:4px;">${CLIENT_CONFIG.logo}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:27px;color:var(--gold-l);letter-spacing:2px;">${CLIENT_CONFIG.name}</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:30px;">${CLIENT_CONFIG.tagline}</div>
+      <div id="user-cards" style="display:flex;flex-direction:column;gap:10px;">
+        <div onclick="selectUser('manager')" style="background:var(--card);border:2px solid var(--div);border-radius:12px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .18s;">
+          <div style="width:44px;height:44px;border-radius:50%;background:rgba(200,145,58,.2);color:var(--gold-l);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">${USERS.manager.name.charAt(0)}</div>
+          <div><div style="font-size:15px;font-weight:600;">${USERS.manager.name}</div><div style="font-size:11px;color:var(--muted);">Accès complet</div></div>
+        </div>
+        <div onclick="selectUser('caissier')" style="background:var(--card);border:2px solid var(--div);border-radius:12px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .18s;">
+          <div style="width:44px;height:44px;border-radius:50%;background:rgba(74,144,217,.2);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">${USERS.caissier.name.charAt(0)}</div>
+          <div><div style="font-size:15px;font-weight:600;">${USERS.caissier.name}</div><div style="font-size:11px;color:var(--muted);">Vente · Service</div></div>
+        </div>
+      </div>
+      <div id="pin-area" style="display:none;margin-top:16px;">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Code PIN</div>
+        <div id="pin-dots" style="display:flex;gap:10px;justify-content:center;margin-bottom:14px;"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          ${[1,2,3,4,5,6,7,8,9,'✕',0,'⌫'].map(k => `<div onclick="pinKey('${k}')" style="padding:14px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:${k==='✕'?'var(--red)':k==='⌫'?'var(--muted)':'var(--txt)'};font-size:18px;font-weight:600;cursor:pointer;text-align:center;">${k}</div>`).join('')}
+        </div>
+        <div id="pin-error" style="color:var(--red);font-size:12px;margin-top:8px;display:none;">Code incorrect</div>
+        <div onclick="pinTarget=null;pinBuffer='';render()" style="color:var(--muted);font-size:12px;cursor:pointer;margin-top:14px;">← Changer</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function selectUser(role) {
+  pinTarget = role;
+  pinBuffer = '';
+  renderLogin();
+  $('user-cards').style.display = 'none';
+  $('pin-area').style.display = 'block';
+  renderPinDots();
+}
+
+function renderPinDots() {
+  $('pin-dots').innerHTML = [0,1,2,3].map(i => `<div style="width:14px;height:14px;border-radius:50%;border:2px solid ${i<pinBuffer.length?'var(--gold)':'var(--div)'};background:${i<pinBuffer.length?'var(--gold)':'transparent'};transition:all .15s;"></div>`).join('');
+}
+
+function pinKey(k) {
+  if (k === '✕') { pinBuffer = ''; renderPinDots(); return; }
+  if (k === '⌫') { pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
+  pinBuffer += k;
+  renderPinDots();
+  if (pinBuffer.length === 4) {
+    if (USERS[pinTarget] && USERS[pinTarget].pin === pinBuffer) {
+      currentUser = pinTarget;
+      activeTable = null;
+      render();
+    } else {
+      $('pin-error').style.display = 'block';
+      pinBuffer = '';
+      setTimeout(() => { $('pin-error').style.display='none'; renderPinDots(); }, 1200);
+    }
+  }
+}
+
+// ═══════════════ TABLE GRID SCREEN ═══════════════
+function renderTables() {
+  const occupied = tables.filter(t => t.status === 'occupied').length;
+  const totalOpen = tables.filter(t => t.status === 'occupied').reduce((s,t) => s + t.total, 0);
+
+  app.innerHTML = `
+  <div style="display:flex;flex-direction:column;height:100vh;">
+    <!-- Header -->
+    <header style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:52px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:34px;height:34px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--gold);">${CLIENT_CONFIG.logoLetter}</div>
+        <div><div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);">${CLIENT_CONFIG.name}</div><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">Café POS</div></div>
+      </div>
+      <div style="text-align:center;"><div style="font-size:20px;font-weight:600;" id="clock-main">--:--</div></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="background:rgba(61,184,122,.12);border:1px solid rgba(61,184,122,.3);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--green);">🪑 ${occupied}/${tables.length} occupées</div>
+        <div style="background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--gold-l);">${f(totalOpen)} ${CLIENT_CONFIG.currency} en cours</div>
+        <button onclick="toggleTheme()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:7px 13px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;" id="btn-theme">🌙</button>
+        <button onclick="logout()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:7px 13px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;">⏻ ${USERS[currentUser]?.name}</button>
+      </div>
+    </header>
+
+    <!-- Table Grid -->
+    <div style="flex:1;overflow-y:auto;padding:20px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
+        ${tables.map((t,i) => `
+          <div onclick="openTable(${i})" style="background:${t.status==='occupied'?'linear-gradient(135deg,rgba(200,145,58,.08),var(--card))':'var(--card)'};border:2px solid ${t.status==='occupied'?'var(--gold)':'var(--div)'};border-radius:14px;padding:20px 16px;cursor:pointer;text-align:center;transition:all .15s;position:relative;">
+            ${t.status==='occupied'?'<div style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 2s infinite;"></div>':''}
+            <div style="font-size:28px;margin-bottom:6px;">${t.status==='occupied'?'🪑':'⬜'}</div>
+            <div style="font-size:15px;font-weight:700;">Table ${t.id}</div>
+            ${t.status==='occupied'?`
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">${t.items.length} article${t.items.length>1?'s':''} · ${t.openedAt||''}</div>
+              <div style="font-size:16px;font-weight:700;color:var(--gold-l);margin-top:6px;">${f(t.total)} ${CLIENT_CONFIG.currency}</div>
+            `:`<div style="font-size:11px;color:var(--muted);margin-top:4px;">Libre</div>`}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>
+  <style>@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}</style>`;
+  startClock();
+}
+
+function openTable(idx) { activeTable = idx; render(); }
+function logout() { currentUser = null; activeTable = null; render(); }
+
+// ═══════════════ TABLE ORDER SCREEN ═══════════════
+function renderTableOrder() {
+  const t = tables[activeTable];
+  const cats = Object.keys(MENU);
+
+  app.innerHTML = `
+  <div style="display:flex;height:100vh;flex-direction:column;">
+    <!-- Header -->
+    <header style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:48px;flex-shrink:0;">
+      <button onclick="backToTables()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:6px 14px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;">← Tables</button>
+      <div style="font-size:16px;font-weight:700;color:var(--gold-l);">🪑 Table ${t.id} ${t.status==='occupied'?'<span style="font-size:11px;color:var(--green);">(depuis '+t.openedAt+')</span>':''}</div>
+      <div style="display:flex;gap:8px;">
+        ${CLIENT_CONFIG.printEnabled?`<button onclick="printTableTicket()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:6px 14px;color:var(--muted);font-size:12px;cursor:pointer;">🖨️ Ticket</button>`:''}
+        <button onclick="settleTable()" style="background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:7px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;" ${t.items.length===0?'disabled style="opacity:.4;cursor:not-allowed;"':''}>💰 Encaisser (${f(t.total)} ${CLIENT_CONFIG.currency})</button>
+      </div>
+    </header>
+
+    <div style="display:flex;flex:1;overflow:hidden;">
+      <!-- Left: Categories + Products -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+        <!-- Category tabs -->
+        <div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--div);overflow-x:auto;flex-shrink:0;">
+          ${cats.map(c => `<button onclick="setCat('${c}')" style="padding:7px 14px;border-radius:6px;border:1px solid ${c===cat?'var(--gold)':'var(--div)'};background:${c===cat?'var(--gold-dim)':'var(--card)'};color:${c===cat?'var(--gold-l)':'var(--muted)'};font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">${MENU[c].icon} ${c}</button>`).join('')}
+        </div>
+        <!-- Product grid -->
+        <div style="flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;align-content:start;" id="prod-grid">
+          ${(MENU[cat]?.items||[]).map(it => `
+            <div onclick='addToTable(${JSON.stringify(it).replace(/'/g,"&#39;")})' style="background:var(--card);border:1px solid var(--div);border-radius:10px;padding:12px 10px;cursor:pointer;text-align:center;transition:all .15s;">
+              <div style="font-size:24px;margin-bottom:4px;">${it.e}</div>
+              <div style="font-size:11px;font-weight:600;line-height:1.3;">${it.name}</div>
+              <div style="font-size:13px;font-weight:700;color:var(--gold-l);margin-top:4px;">${it.v?f(it.v[0].p)+'–'+f(it.v[1].p):f(it.p)} <span style="font-size:10px;color:var(--muted);">${CLIENT_CONFIG.currency}</span></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Right: Table Items (current order) -->
+      <div style="width:320px;background:var(--panel);border-left:1px solid var(--div);display:flex;flex-direction:column;flex-shrink:0;">
+        <div style="padding:10px 12px;border-bottom:1px solid var(--div);display:flex;justify-content:space-between;align-items:center;">
+          <div><div style="font-weight:700;font-size:14px;">Commande Table ${t.id}</div><div style="font-size:11px;color:var(--muted);">${t.items.length} article${t.items.length>1?'s':''}</div></div>
+          ${t.items.length>0?`<button onclick="clearTable()" style="font-size:10px;color:var(--red);cursor:pointer;padding:3px 8px;border:1px solid rgba(224,82,82,.25);border-radius:4px;background:none;">✕ Vider</button>`:''}
+        </div>
+        <div style="flex:1;overflow-y:auto;" id="table-items">
+          ${t.items.length===0?`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);padding:30px;text-align:center;"><div style="font-size:40px;opacity:.2;">☕</div><div style="margin-top:8px;">Table vide</div><div style="font-size:11px;">Cliquez sur un article pour l'ajouter</div></div>`:''}
+          ${t.items.map((it,i) => `
+            <div style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid rgba(35,28,18,.7);">
+              <div style="display:flex;align-items:center;background:var(--card);border:1px solid var(--div);border-radius:5px;overflow:hidden;">
+                <div onclick="changeQty(${i},-1)" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--muted);">−</div>
+                <div style="width:24px;text-align:center;font-size:12px;font-weight:700;">${it.qty}</div>
+                <div onclick="changeQty(${i},1)" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--muted);">+</div>
+              </div>
+              <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.name}</div><div style="font-size:10px;color:var(--muted);">${it.e} · ${f(it.price)} ${CLIENT_CONFIG.currency}</div></div>
+              <div style="font-size:12px;font-weight:700;color:var(--gold-l);">${f(it.price*it.qty)}</div>
+              <div onclick="removeItem(${i})" style="color:var(--muted);cursor:pointer;font-size:13px;padding:3px;">✕</div>
+            </div>
+          `).join('')}
+        </div>
+        <!-- Total -->
+        <div style="border-top:1px solid var(--div);padding:12px;">
+          <div style="font-size:20px;font-weight:700;display:flex;justify-content:space-between;"><span>TOTAL</span><span style="color:var(--gold-l);">${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════ TABLE ACTIONS ═══════════════
+function setCat(c) { cat = c; render(); }
+
+function addToTable(item) {
+  const t = tables[activeTable];
+  if (t.status === 'free') {
+    t.status = 'occupied';
+    t.openedAt = now();
+  }
+  // Check if item already exists → increment qty
+  const existing = t.items.find(x => x.id === item.id);
+  if (existing) {
+    existing.qty++;
+  } else {
+    t.items.push({ id: item.id, name: item.name, e: item.e, price: item.p || (item.v?item.v[0].p:0), qty: 1 });
+  }
+  recalcTable(activeTable);
+  saveTables();
+  render();
+}
+
+function changeQty(idx, delta) {
+  const t = tables[activeTable];
+  t.items[idx].qty = Math.max(1, t.items[idx].qty + delta);
+  recalcTable(activeTable);
+  saveTables();
+  render();
+}
+
+function removeItem(idx) {
+  const t = tables[activeTable];
+  t.items.splice(idx, 1);
+  if (t.items.length === 0) { t.status = 'free'; t.openedAt = null; }
+  recalcTable(activeTable);
+  saveTables();
+  render();
+}
+
+function clearTable() {
+  if (!confirm('Vider la table ' + tables[activeTable].id + ' ?')) return;
+  tables[activeTable].items = [];
+  tables[activeTable].total = 0;
+  tables[activeTable].status = 'free';
+  tables[activeTable].openedAt = null;
+  saveTables();
+  render();
+}
+
+function recalcTable(idx) {
+  tables[idx].total = tables[idx].items.reduce((s, it) => s + it.price * it.qty, 0);
+}
+
+function backToTables() { activeTable = null; render(); }
+
+// ═══════════════ SETTLE / PAY ═══════════════
+function settleTable() {
+  const t = tables[activeTable];
+  if (t.items.length === 0) return;
+
+  const confirmed = confirm(`Encaisser Table ${t.id} — ${f(t.total)} ${CLIENT_CONFIG.currency} ?\n\nCliquez OK pour confirmer le paiement.`);
+  if (!confirmed) return;
+
+  // Save sale to SQLite (if available)
+  const saleData = {
+    num: orderNum++,
+    businessDate: todayKey(),
+    date: new Date().toLocaleDateString('fr-TN'),
+    time: now(),
+    items: t.items.map(it => ({ name: it.name, qty: it.qty, price: it.price })),
+    sub: t.total,
+    disc: 0,
+    discount: 0,
+    grand: t.total,
+    payMethod: 'cash',
+    received: t.total,
+    monnaie: 0,
+    cashier: USERS[currentUser]?.name || 'Caissier',
+    type: 'table',
+    cliName: 'Table ' + t.id,
+    cliTel: '',
+  };
+
+  // Save to SQLite via IPC
+  if (window.electronAPI?.saveSale) {
+    window.electronAPI.saveSale(saleData);
+  }
+
+  // Sync to server
+  syncSale(saleData);
+
+  // Print if enabled
+  if (CLIENT_CONFIG.printEnabled) {
+    printReceipt(t, saleData);
+  }
+
+  // Clear table
+  t.items = [];
+  t.total = 0;
+  t.status = 'free';
+  t.openedAt = null;
+  saveTables();
+  activeTable = null;
+  render();
+  flash('✅ Table ' + t.id + ' encaissée — ' + f(saleData.grand) + ' ' + CLIENT_CONFIG.currency);
+}
+
+// ═══════════════ PRINTING ═══════════════
+function printTableTicket() {
+  if (!CLIENT_CONFIG.printEnabled) return;
+  const t = tables[activeTable];
+  if (t.items.length === 0) return;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:4mm;}
+  .c{text-align:center;}.b{font-weight:700;}.div{border-top:1px dashed #000;margin:4px 0;}
+  .r{display:flex;justify-content:space-between;}.lg{font-size:16px;letter-spacing:2px;}
+  </style></head><body>
+  <div class="c lg b">${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:10px;">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
+  <div class="div"></div>
+  <div class="c b">TABLE ${t.id} — EN COURS</div>
+  <div class="c" style="font-size:10px;">${new Date().toLocaleDateString('fr-TN')} ${now()}</div>
+  <div class="div"></div>
+  ${t.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
+  <div class="div"></div>
+  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="div"></div>
+  <div class="c" style="font-size:10px;margin-top:4px;">Ticket intermédiaire — non payé</div>
+  </body></html>`;
+
+  if (window.electronAPI?.printReceipt) {
+    window.electronAPI.printReceipt(html);
+  }
+}
+
+function printReceipt(t, sale) {
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:4mm;}
+  .c{text-align:center;}.b{font-weight:700;}.div{border-top:1px dashed #000;margin:4px 0;}
+  .r{display:flex;justify-content:space-between;}.lg{font-size:16px;letter-spacing:2px;}
+  </style></head><body>
+  <div class="c lg b">${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:10px;">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
+  <div class="div"></div>
+  <div class="c b">REÇU — TABLE ${t.id}</div>
+  <div class="c" style="font-size:10px;">N° ${String(sale.num).padStart(3,'0')} · ${sale.date} ${sale.time}</div>
+  <div class="c" style="font-size:10px;">Serveur: ${sale.cashier}</div>
+  <div class="div"></div>
+  ${sale.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
+  <div class="div"></div>
+  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(sale.grand)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="div"></div>
+  <div class="c" style="font-size:10px;margin-top:4px;">Merci de votre visite!</div>
+  <div class="c" style="font-size:9px;">Powered by Servio OS</div>
+  </body></html>`;
+
+  if (window.electronAPI?.printReceipt) {
+    window.electronAPI.printReceipt(html);
+  }
+}
+
+// ═══════════════ SYNC ═══════════════
+let syncQueue = JSON.parse(localStorage.getItem('cafe-sync-queue') || '[]');
+function saveQueue() { localStorage.setItem('cafe-sync-queue', JSON.stringify(syncQueue)); }
+
+async function syncSale(od) {
+  if (!SYNC_ENABLED) return;
+  try {
+    const res = await fetch(SYNC_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify(od)
+    });
+    const data = await res.json();
+    if (data.ok) { flushQueue(); return true; }
+  } catch(e) {
+    syncQueue.push(od); saveQueue();
+  }
+  return false;
+}
+
+async function flushQueue() {
+  if (!syncQueue.length) return;
+  const remaining = [];
+  for (const od of syncQueue) {
+    try {
+      const res = await fetch(SYNC_API_URL, { method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':SYNC_API_KEY}, body:JSON.stringify(od) });
+      const data = await res.json();
+      if (!data.ok) remaining.push(od);
+    } catch(e) { remaining.push(od); }
+  }
+  syncQueue = remaining; saveQueue();
+}
+window.addEventListener('online', () => { flushQueue(); });
+
+// ═══════════════ LICENSE CHECK ═══════════════
+const CHECK_URL = SYNC_API_URL.replace('/api/sync', '/api/check');
+async function checkLicense() {
+  if (!SYNC_ENABLED) return;
+  try {
+    const res = await fetch(CHECK_URL + '?key=' + SYNC_API_KEY, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+    if (data.ok && data.active === false) {
+      app.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);">
+        <div style="background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;">
+          <div style="font-size:56px;margin-bottom:12px;">🔒</div>
+          <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--red);margin-bottom:14px;">Application Suspendue</div>
+          <div style="font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;">${data.message||'Contactez le développeur.'}</div>
+        </div></div>`;
+    }
+  } catch(e) { /* offline — don't block */ }
+}
+setTimeout(checkLicense, 5000);
+setInterval(checkLicense, 30 * 60 * 1000);
+
+// ═══════════════ THEME ═══════════════
+function toggleTheme() {
+  const isLight = document.body.classList.contains('light');
+  document.body.classList.toggle('light', !isLight);
+  localStorage.setItem('cafe-theme', isLight ? 'dark' : 'light');
+}
+(function(){ const t = localStorage.getItem('cafe-theme'); if(t==='light') document.body.classList.add('light'); })();
+
+// ═══════════════ CLOCK ═══════════════
+function startClock() {
+  const el = document.getElementById('clock-main');
+  if (el) el.textContent = new Date().toLocaleTimeString('fr-TN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  setTimeout(startClock, 1000);
+}
+
+// ═══════════════ FLASH MESSAGE ═══════════════
+function flash(msg) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--gold);border-radius:8px;padding:10px 20px;color:var(--gold-l);font-size:13px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+// ═══════════════ START ═══════════════
+render();
+
+</script>
+</body>
+</html>

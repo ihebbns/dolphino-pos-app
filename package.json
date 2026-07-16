@@ -1,12 +1,14 @@
 {
   "name": "dolphino-pos",
-  "version": "1.0.1",
-  "description": "Système de caisse Dolphino Restaurant & Fast Food",
-  "main": "main.js",
-  "author": "Dolphino Tunisie",
+  "version": "1.1.0",
+  "description": "Système de caisse POS — Multi-client (Servio OS)",
+  "main": "core/main.js",
+  "author": "Servio OS",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "start:dolphino": "set CLIENT_DIR=clients/dolphino&& electron .",
+    "start:mio_food": "set CLIENT_DIR=clients/mio_food&& electron .",
     "build:win": "electron-builder --win --x64",
     "build:portable": "electron-builder --win portable --x64",
     "pack": "electron-builder --dir"
@@ -21,14 +23,14 @@
   "build": {
     "appId": "tn.dolphino.pos",
     "productName": "Dolphino POS",
-    "copyright": "© 2025 Dolphino Restaurant",
+    "copyright": "© 2025 Servio OS",
     "directories": {
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "database.js",
-      "preload.js",
+      "core/main.js",
+      "core/database.js",
+      "core/preload.js",
       "index.html",
       "node_modules/sql.js/dist/**"
     ],
