@@ -394,12 +394,12 @@ function settleTable() {
     date: new Date().toLocaleDateString('fr-TN'),
     time: now(),
     items: t.items.map(it => ({ name: it.name, qty: it.qty, price: it.price })),
-    sub: t.total,
+    s: t.total,
+    d: 0,
     disc: 0,
-    discount: 0,
-    grand: t.total,
-    payMethod: 'cash',
-    received: t.total,
+    g: t.total,
+    payMode: 'cash',
+    r: t.total,
     monnaie: 0,
     cashier: USERS[currentUser]?.name || 'Caissier',
     type: 'table',
@@ -428,7 +428,7 @@ function settleTable() {
   saveTables();
   activeTable = null;
   render();
-  flash('✅ Table ' + t.id + ' encaissée — ' + f(saleData.grand) + ' ' + CLIENT_CONFIG.currency);
+  flash('✅ Table ' + t.id + ' encaissée — ' + f(saleData.g) + ' ' + CLIENT_CONFIG.currency);
 }
 
 // ═══════════════ PRINTING ═══════════════
@@ -475,7 +475,7 @@ function printReceipt(t, sale) {
   <div class="div"></div>
   ${sale.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
   <div class="div"></div>
-  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(sale.grand)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(sale.g)} ${CLIENT_CONFIG.currency}</span></div>
   <div class="div"></div>
   <div class="c" style="font-size:10px;margin-top:4px;">Merci de votre visite!</div>
   <div class="c" style="font-size:9px;">Powered by Servio OS</div>
