@@ -3,506 +3,1133 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title id="page-title">Café POS</title>
+<title>POS Pro — Café & Restaurant</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#080604;--panel:#0F0C08;--card:#181310;--card-h:#201A12;
+  --bg:#0A0704;--panel:#0F0C08;--card:#161210;--card-h:#1E1810;
   --gold:#C8913A;--gold-l:#E8A84C;--gold-dim:rgba(200,145,58,.1);
   --txt:#F0E8D8;--muted:#7A6E5F;--div:#231C12;
-  --green:#3DB87A;--red:#E05252;--blue:#4A90D9;--orange:#E8882A;
-  --r:9px;
+  --green:#3DB87A;--red:#E05252;--blue:#4A90D9;--orange:#E8882A;--purple:#9B6FD4;
+  --r:8px;--shadow:0 4px 16px rgba(0,0,0,.3);
 }
 body.light{
   --bg:#F5F0E8;--panel:#FFFFFF;--card:#F0EBE0;--card-h:#E8E0D0;
-  --gold:#B8782A;--gold-l:#A06820;--gold-dim:rgba(184,120,42,.1);
+  --gold:#B8782A;--gold-l:#A06820;--gold-dim:rgba(184,120,42,.08);
   --txt:#1A1208;--muted:#8A7A6A;--div:#DDD5C5;
-  --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;
+  --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;--purple:#7B4FB0;
+  --shadow:0 4px 16px rgba(0,0,0,.08);
 }
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
-input,textarea,select{font-family:inherit;}
-button{-webkit-tap-highlight-color:transparent;cursor:pointer;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
+input,textarea,select,button{font-family:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--div);border-radius:4px}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── HEADER ── */
+#hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:50px;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:8px}
+.logo-circle{width:32px;height:32px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--gold)}
+.logo-name{font-family:'Playfair Display',serif;font-size:17px;color:var(--gold-l)}
+.logo-sub{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+#clock{font-size:18px;font-weight:600}
+#clock-date{font-size:10px;color:var(--muted);text-align:center}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.hdr-btn{background:var(--card);border:1px solid var(--div);border-radius:6px;padding:6px 12px;color:var(--muted);font-size:11px;font-weight:600;transition:all .12s}
+.hdr-btn:hover{border-color:var(--gold);color:var(--gold-l)}
+.hdr-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.hdr-badge-green{background:rgba(61,184,122,.12);border:1px solid rgba(61,184,122,.3);color:var(--green)}
+.hdr-badge-red{background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);color:var(--red)}
+
+/* ── MAIN LAYOUT ── */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* ── TABLE PLAN (left) ── */
+#table-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.section-tabs{display:flex;gap:2px;padding:8px 12px;border-bottom:1px solid var(--div);background:var(--panel);flex-shrink:0}
+.section-tab{padding:7px 16px;border-radius:6px;font-size:11px;font-weight:600;color:var(--muted);border:1px solid transparent;transition:all .12s}
+.section-tab:hover{color:var(--txt);background:var(--card)}
+.section-tab.on{background:var(--gold-dim);border-color:rgba(200,145,58,.3);color:var(--gold-l)}
+#table-grid{flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;align-content:start}
+
+/* ── TABLE CARD ── */
+.tbl{position:relative;border-radius:12px;padding:16px 12px;text-align:center;border:2px solid var(--div);background:var(--card);transition:all .15s;cursor:pointer;animation:slideUp .3s ease both}
+.tbl:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.tbl-free{border-color:var(--div);opacity:.7}
+.tbl-free:hover{opacity:1;border-color:var(--gold-dim)}
+.tbl-occupied{border-color:var(--gold);background:linear-gradient(135deg,rgba(200,145,58,.06),var(--card))}
+.tbl-sent{border-color:var(--green);background:linear-gradient(135deg,rgba(61,184,122,.06),var(--card))}
+.tbl-bill{border-color:var(--orange);background:linear-gradient(135deg,rgba(232,136,42,.06),var(--card))}
+.tbl-clean{border-color:var(--purple);background:linear-gradient(135deg,rgba(155,111,212,.06),var(--card))}
+.tbl-dot{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%}
+.tbl-dot-gold{background:var(--gold);animation:pulse 2s infinite}
+.tbl-dot-green{background:var(--green);animation:pulse 2s infinite}
+.tbl-dot-orange{background:var(--orange);animation:pulse 2s infinite}
+.tbl-dot-purple{background:var(--purple)}
+.tbl-icon{font-size:24px;margin-bottom:4px}
+.tbl-num{font-size:14px;font-weight:700}
+.tbl-info{font-size:10px;color:var(--muted);margin-top:3px}
+.tbl-total{font-size:15px;font-weight:700;color:var(--gold-l);margin-top:5px}
+.tbl-timer{font-size:9px;color:var(--muted);margin-top:2px}
+.tbl-server{font-size:9px;color:var(--blue);margin-top:2px}
+
+/* ── ORDER PANEL (right) ── */
+#order-panel{width:380px;background:var(--panel);border-left:1px solid var(--div);display:flex;flex-direction:column;flex-shrink:0}
+.op-hdr{padding:10px 14px;border-bottom:1px solid var(--div);display:flex;align-items:center;justify-content:space-between}
+.op-title{font-weight:700;font-size:14px}
+.op-table{font-size:20px;color:var(--gold);font-weight:700}
+.op-actions{display:flex;gap:6px}
+.op-btn{padding:4px 10px;border-radius:5px;font-size:10px;font-weight:600;border:1px solid var(--div);background:var(--card);color:var(--muted);transition:all .12s}
+.op-btn:hover{border-color:var(--gold);color:var(--gold-l)}
+.op-btn-red{border-color:rgba(224,82,82,.3);color:var(--red)}
+.op-btn-red:hover{background:rgba(224,82,82,.08)}
+
+/* Category strip */
+.cat-strip{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--div);overflow-x:auto;flex-shrink:0}
+.cat-chip{padding:6px 12px;border-radius:5px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid var(--div);color:var(--muted);transition:all .12s}
+.cat-chip:hover{border-color:var(--gold-dim);color:var(--txt)}
+.cat-chip.on{border-color:var(--gold);color:var(--gold-l);background:var(--gold-dim)}
+
+/* Product grid inside order panel */
+.prod-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px;overflow-y:auto;max-height:220px}
+.prod-card{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer;transition:all .12s;font-size:11px}
+.prod-card:hover{border-color:var(--gold);background:var(--card-h)}
+.prod-card:active{transform:scale(.96)}
+.prod-em{font-size:18px}
+.prod-nm{font-size:10px;font-weight:500;margin-top:2px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prod-pr{font-size:11px;font-weight:700;color:var(--gold-l);margin-top:2px}
+
+/* Order items list */
+#order-items{flex:1;overflow-y:auto;border-top:1px solid var(--div)}
+.oi{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid rgba(35,28,18,.5);animation:slideUp .2s ease}
+.oi:hover{background:var(--card)}
+.oi-qty{display:flex;align-items:center;background:var(--card);border:1px solid var(--div);border-radius:4px;overflow:hidden}
+.oi-qb{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);border:none;background:none}
+.oi-qb:hover{background:var(--div);color:var(--txt)}
+.oi-qv{width:20px;text-align:center;font-size:11px;font-weight:700}
+.oi-info{flex:1;min-width:0}
+.oi-name{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oi-mods{font-size:9px;color:var(--orange);margin-top:1px}
+.oi-note{font-size:9px;color:var(--muted);font-style:italic}
+.oi-price{font-size:12px;font-weight:700;color:var(--gold-l);flex-shrink:0}
+.oi-del{color:var(--muted);font-size:12px;padding:3px;flex-shrink:0}
+.oi-del:hover{color:var(--red)}
+
+/* Totals + payment */
+#order-footer{border-top:1px solid var(--div);padding:10px 14px}
+.total-row{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+.total-grand{display:flex;justify-content:space-between;font-size:18px;font-weight:700;padding-top:6px;border-top:1px solid var(--div);margin-top:4px}
+.total-grand span:last-child{color:var(--gold-l)}
+.pay-btns{display:flex;gap:6px;margin-top:10px}
+.pay-btn{flex:1;padding:10px 4px;border-radius:7px;font-size:12px;font-weight:700;text-align:center;border:none;transition:all .12s}
+.pay-btn-green{background:linear-gradient(135deg,var(--green),#2ea868);color:#fff}
+.pay-btn-green:hover{opacity:.9;transform:translateY(-1px)}
+.pay-btn-green:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.pay-btn-orange{background:var(--card);border:1px solid var(--div);color:var(--muted)}
+.pay-btn-orange:hover{border-color:var(--orange);color:var(--orange)}
+
+/* ── MODALS ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);animation:fadeIn .15s}
+.modal-bg.show{display:flex}
+.modal-box{background:var(--panel);border:1px solid var(--div);border-radius:16px;padding:24px;width:90vw;max-width:420px;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:scaleIn .2s cubic-bezier(.2,.85,.3,1.1)}
+.modal-box-wide{max-width:700px}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:14px;text-align:center}
+.modal-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:16px}
+.modal-close{width:100%;padding:10px;background:var(--card);border:1px solid var(--div);border-radius:7px;color:var(--muted);font-size:13px;margin-top:12px}
+.modal-close:hover{border-color:var(--red);color:var(--red)}
+
+/* ── LOGIN ── */
+#login{position:fixed;inset:0;background:radial-gradient(circle at 30% 20%,rgba(200,145,58,.08),transparent 55%),var(--bg);z-index:900;display:flex;align-items:center;justify-content:center}
+.login-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:36px 30px;width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:scaleIn .35s cubic-bezier(.2,.9,.3,1.1)}
+.login-logo{font-size:44px;margin-bottom:4px}
+.login-brand{font-family:'Playfair Display',serif;font-size:26px;color:var(--gold-l);letter-spacing:2px}
+.login-sub{font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:24px}
+.user-card{background:var(--card);border:2px solid var(--div);border-radius:10px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:all .15s;margin-bottom:8px}
+.user-card:hover{border-color:var(--gold);background:var(--card-h);transform:translateY(-1px)}
+.user-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}
+.user-name{font-size:14px;font-weight:600}
+.user-role{font-size:10px;color:var(--muted);margin-top:1px}
+.pin-wrap{margin-top:16px;display:none}
+.pin-dots{display:flex;gap:10px;justify-content:center;margin-bottom:12px}
+.pin-dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--div);transition:all .12s}
+.pin-dot.filled{background:var(--gold);border-color:var(--gold)}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.pin-btn{padding:13px;background:var(--card);border:1px solid var(--div);border-radius:7px;color:var(--txt);font-size:17px;font-weight:600;text-align:center;transition:all .1s}
+.pin-btn:hover{background:var(--card-h);border-color:var(--gold-dim)}
+.pin-btn:active{transform:scale(.95)}
+.pin-error{color:var(--red);font-size:11px;margin-top:8px;display:none}
+
+/* ── SESSION CAISSE ── */
+.session-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
+.session-box{background:var(--panel);border:1px solid var(--div);border-radius:18px;padding:30px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+
+/* ── REMOTE LOCK ── */
+#remote-lock{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(224,82,82,.1),transparent 60%),var(--bg);z-index:999;display:none;align-items:center;justify-content:center}
+#remote-lock.active{display:flex}
+.lock-box{background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:18px;padding:36px 28px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+
+/* ── FLASH TOAST ── */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--gold);border-radius:8px;padding:10px 20px;color:var(--gold-l);font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:slideUp .3s ease}
+
+/* ── EMPTY STATE ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);padding:30px;text-align:center}
+.empty-icon{font-size:36px;opacity:.3;margin-bottom:8px}
+
+/* ── STATUS BAR ── */
+#statusbar{background:var(--panel);border-top:1px solid var(--div);padding:3px 16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);flex-shrink:0}
+
+/* ── PRINT ── */
+@media print{body>*{display:none!important}#print-zone{display:block!important}}
+#print-zone{display:none}
 </style>
 </head>
 <body>
-<div id="app"></div>
-<div id="print-area" style="display:none"></div>
+<div id="remote-lock"><div class="lock-box"><div style="font-size:52px;margin-bottom:10px">🔒</div><div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--red);margin-bottom:12px">Application Suspendue</div><div id="lock-msg" style="font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-line">Contactez le développeur.</div></div></div>
+<div id="login"></div>
+<header id="hdr" style="display:none"></header>
+<div id="main" style="display:none"></div>
+<div id="statusbar" style="display:none"><span id="status-msg">✓ Prêt</span><span id="status-sync"></span></div>
+<div id="modals"></div>
+<div id="print-zone"></div>
 <script>
-// ╔══════════════════════════════════════════════════════╗
-// ║    CAFÉ / RESTAURANT POS — TABLE MANAGEMENT         ║
-// ║    CLIENT CONFIGURATION — CHANGE PER CLIENT         ║
-// ╚══════════════════════════════════════════════════════╝
+
+// ╔══════════════════════════════════════════════════════════╗
+// ║  SERVIO OS — CAFÉ & RESTAURANT POS TEMPLATE             ║
+// ║  Configuration per client — nothing hardcoded            ║
+// ╚══════════════════════════════════════════════════════════╝
+
 const CLIENT_CONFIG = {
-  name:        'DOLPHINO',
+  // ── Identity ──
+  name:        'RESTAURANT',
   tagline:     'Café & Restaurant — POS Pro',
   logo:        '☕',
-  logoLetter:  'D',
-  city:        'Kelibia, Tunisie',
-  phone:       '+216 52 050 581',
+  logoLetter:  'R',
+  city:        'Tunisie',
+  phone:       '+216 00 000 000',
   currency:    'DT',
+
+  // ── Sync ──
   syncEnabled: true,
   syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
-  syncKey:     'DOLPH-TEST-KEY-001',
+  syncKey:     'CHANGE-ME-KEY',
+
+  // ── Users / PINs ──
   managerName: 'Manager',
   managerPin:  '1234',
   cashierName: 'Caissier',
   cashierPin:  '0000',
+
+  // ── Tables ──
   tableCount:  12,
-  printEnabled: true,  // false = no ticket printing (some cafés work without)
+  sections:    ['Salle', 'Terrasse', 'Bar'],
+
+  // ── Print ──
+  printEnabled: true,
+  kitchenPrint: true,
+
+  // ── Feature flags ──
+  features: {
+    tableService:    true,   // table plan + sections
+    counterService:  true,   // comptoir (café direct without table)
+    kitchenZones:    true,   // separate kitchen tickets
+    splitBill:       true,   // split par article/personne/montant
+    transferTable:   true,   // move order between tables
+    mergeTable:      true,   // combine tables
+    modifiers:       true,   // size, milk, sugar, extra shot
+    loyalty:         false,  // fidélité (10ème offert)
+    reservations:    false,  // réservations
+    courseService:    false,  // entrée → plat → dessert
+    clientHistory:   false,  // CRM par téléphone
+    serverReports:   false,  // ventes par serveur + pourboires
+    happyHour:       false,  // promos automatiques
+    qrOrder:         false,  // commande par QR
+  },
+
+  // ── Encaissement rules ──
+  // 'cashier_only' = only cashier can settle | 'any_server' = servers can settle
+  encaissementMode: 'cashier_only',
+
+  // ── Café modifiers ──
+  modifierGroups: [
+    { name: 'Taille',  options: ['Petit', 'Moyen', 'Grand'], prices: [0, 0.5, 1] },
+    { name: 'Lait',    options: ['Normal', 'Écrémé', 'Avoine', 'Amande'], prices: [0, 0, 0.5, 0.5] },
+    { name: 'Sucre',   options: ['Normal', 'Peu', 'Sans'], prices: [0, 0, 0] },
+    { name: 'Extra',   options: ['Shot sup.', 'Chantilly', 'Caramel', 'Vanille'], prices: [1, 0.5, 0.5, 0.5] },
+  ],
+
+  // ── Kitchen zones ──
+  zone1Label: 'BAR — Boissons chaudes & froides',
+  zone1Cats:  ['Café', 'Thé', 'Jus', 'Boisson'],
+  zone2Label: 'CUISINE — Pâtisserie & Plats',
+  zone2Cats:  ['Pâtisserie', 'Plat', 'Salade'],
 };
 
 const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
 const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
 const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
+const F = CLIENT_CONFIG.features;
 
 // ═══════════════ MENU DATA ═══════════════
 let MENU = {
   "Café":{icon:"☕",items:[
-    {id:"cf1",name:"Express",e:"☕",p:2},
-    {id:"cf2",name:"Cappuccino",e:"☕",p:4},
-    {id:"cf3",name:"Café au lait",e:"☕",p:3},
-    {id:"cf4",name:"Café Crème",e:"☕",p:3.5},
-    {id:"cf5",name:"Américano",e:"☕",p:3.5},
-    {id:"cf6",name:"Noisette",e:"☕",p:2.5},
-    {id:"cf7",name:"Direct",e:"☕",p:1.5}
+    {id:"cf1",name:"Express",e:"☕",p:2,zone:"bar"},
+    {id:"cf2",name:"Cappuccino",e:"☕",p:4,zone:"bar"},
+    {id:"cf3",name:"Café Crème",e:"☕",p:3.5,zone:"bar"},
+    {id:"cf4",name:"Café au Lait",e:"☕",p:3,zone:"bar"},
+    {id:"cf5",name:"Américano",e:"☕",p:3.5,zone:"bar"},
+    {id:"cf6",name:"Noisette",e:"☕",p:2.5,zone:"bar"},
+    {id:"cf7",name:"Direct",e:"☕",p:1.5,zone:"bar"},
+    {id:"cf8",name:"Macchiato",e:"☕",p:3,zone:"bar"},
+    {id:"cf9",name:"Latte",e:"☕",p:4.5,zone:"bar"}
   ]},
   "Thé":{icon:"🍵",items:[
-    {id:"th1",name:"Thé Vert",e:"🍵",p:2},
-    {id:"th2",name:"Thé Rouge",e:"🍵",p:2},
-    {id:"th3",name:"Thé à la Menthe",e:"🍵",p:2.5},
-    {id:"th4",name:"Thé au Pin",e:"🍵",p:3}
+    {id:"th1",name:"Thé Vert",e:"🍵",p:2,zone:"bar"},
+    {id:"th2",name:"Thé Rouge",e:"🍵",p:2,zone:"bar"},
+    {id:"th3",name:"Thé Menthe",e:"🍵",p:2.5,zone:"bar"},
+    {id:"th4",name:"Thé Pin",e:"🍵",p:3,zone:"bar"},
+    {id:"th5",name:"Infusion",e:"🍵",p:3,zone:"bar"}
   ]},
   "Jus":{icon:"🧃",items:[
-    {id:"ju1",name:"Orange Pressé",e:"🍊",p:4},
-    {id:"ju2",name:"Citronnade",e:"🍋",p:3.5},
-    {id:"ju3",name:"Fraise",e:"🍓",p:5},
-    {id:"ju4",name:"Banane",e:"🍌",p:4.5},
-    {id:"ju5",name:"Cocktail",e:"🥤",p:5.5}
+    {id:"ju1",name:"Orange Pressé",e:"🍊",p:4,zone:"bar"},
+    {id:"ju2",name:"Citronnade",e:"🍋",p:3.5,zone:"bar"},
+    {id:"ju3",name:"Fraise",e:"🍓",p:5,zone:"bar"},
+    {id:"ju4",name:"Banane Lait",e:"🍌",p:4.5,zone:"bar"},
+    {id:"ju5",name:"Cocktail Fruits",e:"🥤",p:5.5,zone:"bar"},
+    {id:"ju6",name:"Avocat",e:"🥑",p:5,zone:"bar"}
   ]},
   "Boisson":{icon:"🥤",items:[
-    {id:"bv1",name:"Eau 0.5L",e:"💧",p:1},
-    {id:"bv2",name:"Eau 1L",e:"💧",p:1.5},
-    {id:"bv3",name:"Coca Cola",e:"🥤",p:2.5},
-    {id:"bv4",name:"Fanta",e:"🥤",p:2.5},
-    {id:"bv5",name:"Boga",e:"🥤",p:2}
-  ]},
-  "Chicha":{icon:"💨",items:[
-    {id:"ch1",name:"Chicha Simple",e:"💨",p:8},
-    {id:"ch2",name:"Chicha Double",e:"💨",p:12},
-    {id:"ch3",name:"Charbon Sup.",e:"🔥",p:2}
+    {id:"bv1",name:"Eau 0.5L",e:"💧",p:1,zone:"bar"},
+    {id:"bv2",name:"Eau 1L",e:"💧",p:1.5,zone:"bar"},
+    {id:"bv3",name:"Coca Cola",e:"🥤",p:2.5,zone:"bar"},
+    {id:"bv4",name:"Fanta",e:"🥤",p:2.5,zone:"bar"},
+    {id:"bv5",name:"Boga",e:"🥤",p:2,zone:"bar"},
+    {id:"bv6",name:"Red Bull",e:"🥫",p:5,zone:"bar"}
   ]},
   "Pâtisserie":{icon:"🥐",items:[
-    {id:"pt1",name:"Croissant",e:"🥐",p:2},
-    {id:"pt2",name:"Pain au chocolat",e:"🍫",p:2.5},
-    {id:"pt3",name:"Gâteau",e:"🍰",p:4},
-    {id:"pt4",name:"Crêpe",e:"🥞",p:4.5}
+    {id:"pt1",name:"Croissant",e:"🥐",p:2,zone:"cuisine"},
+    {id:"pt2",name:"Pain Chocolat",e:"🍫",p:2.5,zone:"cuisine"},
+    {id:"pt3",name:"Gâteau Jour",e:"🍰",p:4,zone:"cuisine"},
+    {id:"pt4",name:"Crêpe Nutella",e:"🥞",p:4.5,zone:"cuisine"},
+    {id:"pt5",name:"Brownie",e:"🍫",p:3.5,zone:"cuisine"},
+    {id:"pt6",name:"Cookie",e:"🍪",p:2,zone:"cuisine"},
+    {id:"pt7",name:"Muffin",e:"🧁",p:3,zone:"cuisine"}
+  ]},
+  "Chicha":{icon:"💨",items:[
+    {id:"ch1",name:"Chicha Simple",e:"💨",p:8,zone:"bar"},
+    {id:"ch2",name:"Chicha Double",e:"💨",p:12,zone:"bar"},
+    {id:"ch3",name:"Charbon Sup.",e:"🔥",p:2,zone:"bar"}
   ]}
 };
 
-// ═══════════════ STATE ═══════════════
+// ═══════════════ USERS & ROLES ═══════════════
 const USERS = {
-  manager:{pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',isManager:true},
-  caissier:{pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',isManager:false}
+  manager: { pin: CLIENT_CONFIG.managerPin, name: CLIENT_CONFIG.managerName, role: 'Manager', color: 'var(--gold-l)', bg: 'rgba(200,145,58,.2)', isManager: true, canSettle: true },
+  caissier: { pin: CLIENT_CONFIG.cashierPin, name: CLIENT_CONFIG.cashierName, role: 'Caissier', color: 'var(--blue)', bg: 'rgba(74,144,217,.2)', isManager: false, canSettle: true },
 };
 
-let currentUser = null;
-let tables = []; // Array of { id, items:[], total, openedAt, status:'free'|'occupied' }
-let activeTable = null; // currently selected table index
-let cat = Object.keys(MENU)[0];
-let orderNum = 1;
-const TABLES_KEY = 'cafe-tables-v1';
-const STATE_KEY = 'cafe-state-v1';
+// Additional servers can be added per-client
+const EXTRA_USERS = [];
+// Format: { id:'serv1', pin:'5555', name:'Ahmed', role:'Serveur', canSettle: false }
 
-// Initialize tables
+// ═══════════════ STATE ═══════════════
+let currentUser = null;
+let tables = [];
+let activeTableId = null;  // currently open table ID (null = table plan view)
+let currentCat = Object.keys(MENU)[0];
+let currentSection = CLIENT_CONFIG.sections[0];
+let orderNum = 1;
+let dailyTotal = 0;
+let currentSession = null;
+let history = [];
+
+const STORE = {
+  tables: 'servio-cafe-tables-v1',
+  state:  'servio-cafe-state-v1',
+  session:'servio-cafe-session-v1',
+  theme:  'servio-cafe-theme-v1',
+  queue:  'servio-cafe-sync-queue-v1',
+};
+
+// ── Table statuses ──
+const STATUS = {
+  FREE:     'free',
+  OCCUPIED: 'occupied',
+  SENT:     'sent',      // order sent to kitchen
+  BILL:     'bill',      // bill requested
+  CLEAN:    'clean',     // needs cleaning
+};
+
+const STATUS_LABELS = {
+  free: 'Libre', occupied: 'Occupée', sent: 'En cuisine', bill: 'Addition', clean: 'À nettoyer'
+};
+
+const STATUS_ICONS = {
+  free: '⬜', occupied: '🪑', sent: '🍳', bill: '💰', clean: '🧹'
+};
+
+// ═══════════════ INIT TABLES ═══════════════
 function initTables() {
-  const saved = localStorage.getItem(TABLES_KEY);
-  if (saved) {
-    try { tables = JSON.parse(saved); return; } catch(e) {}
-  }
+  const saved = localStorage.getItem(STORE.tables);
+  if (saved) { try { tables = JSON.parse(saved); return; } catch(e) {} }
   tables = [];
-  for (let i = 0; i < CLIENT_CONFIG.tableCount; i++) {
-    tables.push({ id: i+1, items: [], total: 0, openedAt: null, status: 'free' });
+  const perSection = Math.ceil(CLIENT_CONFIG.tableCount / CLIENT_CONFIG.sections.length);
+  let id = 1;
+  for (const section of CLIENT_CONFIG.sections) {
+    for (let i = 0; i < perSection && id <= CLIENT_CONFIG.tableCount; i++, id++) {
+      tables.push({
+        id, section, status: STATUS.FREE,
+        items: [], total: 0, openedAt: null, server: null,
+        sentAt: null, billAt: null
+      });
+    }
   }
 }
 initTables();
 
-function saveTables() {
-  localStorage.setItem(TABLES_KEY, JSON.stringify(tables));
-}
+function saveTables() { localStorage.setItem(STORE.tables, JSON.stringify(tables)); }
+function getTable(id) { return tables.find(t => t.id === id); }
+function recalcTable(t) { t.total = t.items.reduce((s, it) => s + it.price * it.qty, 0); }
 
-function f(n) { return Number(n).toFixed(3); }
-function now() { return new Date().toLocaleTimeString('fr-TN', {hour:'2-digit',minute:'2-digit'}); }
-function todayKey() {
-  const d=new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// ═══════════════ HELPERS ═══════════════
+function f(n) { return Number(n || 0).toFixed(3); }
+function now() { return new Date().toLocaleTimeString('fr-TN', { hour:'2-digit', minute:'2-digit' }); }
+function nowFull() { return new Date().toLocaleTimeString('fr-TN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function elapsed(timeStr) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':').map(Number);
+  const nowD = new Date();
+  const mins = (nowD.getHours() * 60 + nowD.getMinutes()) - (h * 60 + m);
+  if (mins < 1) return '< 1 min';
+  if (mins < 60) return mins + ' min';
+  return Math.floor(mins/60) + 'h' + String(mins%60).padStart(2,'0');
 }
 
 // ═══════════════ RENDER ENGINE ═══════════════
-const $ = (id) => document.getElementById(id);
-const app = $('app');
-
 function render() {
   if (!currentUser) { renderLogin(); return; }
-  if (activeTable === null) { renderTables(); return; }
-  renderTableOrder();
+  renderHeader();
+  if (activeTableId === null) { renderTablePlan(); } else { renderOrderView(); }
+  renderStatusBar();
 }
 
-// ═══════════════ LOGIN SCREEN ═══════════════
-let pinBuffer = '';
-let pinTarget = null;
+// ═══════════════ LOGIN ═══════════════
+let pinBuffer = '', pinTarget = null;
 
 function renderLogin() {
-  app.innerHTML = `
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,rgba(200,145,58,.08),transparent 55%),var(--bg);">
-    <div style="background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:38px 32px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);">
-      <div style="font-size:46px;margin-bottom:4px;">${CLIENT_CONFIG.logo}</div>
-      <div style="font-family:'Playfair Display',serif;font-size:27px;color:var(--gold-l);letter-spacing:2px;">${CLIENT_CONFIG.name}</div>
-      <div style="font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:30px;">${CLIENT_CONFIG.tagline}</div>
-      <div id="user-cards" style="display:flex;flex-direction:column;gap:10px;">
-        <div onclick="selectUser('manager')" style="background:var(--card);border:2px solid var(--div);border-radius:12px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .18s;">
-          <div style="width:44px;height:44px;border-radius:50%;background:rgba(200,145,58,.2);color:var(--gold-l);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">${USERS.manager.name.charAt(0)}</div>
-          <div><div style="font-size:15px;font-weight:600;">${USERS.manager.name}</div><div style="font-size:11px;color:var(--muted);">Accès complet</div></div>
-        </div>
-        <div onclick="selectUser('caissier')" style="background:var(--card);border:2px solid var(--div);border-radius:12px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .18s;">
-          <div style="width:44px;height:44px;border-radius:50%;background:rgba(74,144,217,.2);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">${USERS.caissier.name.charAt(0)}</div>
-          <div><div style="font-size:15px;font-weight:600;">${USERS.caissier.name}</div><div style="font-size:11px;color:var(--muted);">Vente · Service</div></div>
-        </div>
+  document.getElementById('hdr').style.display = 'none';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('statusbar').style.display = 'none';
+  const allUsers = [
+    ...Object.entries(USERS).map(([k,u]) => ({id:k,...u})),
+    ...EXTRA_USERS
+  ];
+  document.getElementById('login').innerHTML = `
+    <div class="login-box">
+      <div class="login-logo">${CLIENT_CONFIG.logo}</div>
+      <div class="login-brand">${CLIENT_CONFIG.name}</div>
+      <div class="login-sub">${CLIENT_CONFIG.tagline}</div>
+      <div id="user-list">
+        ${allUsers.map(u => `
+          <div class="user-card" onclick="selectUser('${u.id}')">
+            <div class="user-avatar" style="background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'}">${u.name.charAt(0)}</div>
+            <div><div class="user-name">${u.name}</div><div class="user-role">${u.role}</div></div>
+          </div>
+        `).join('')}
       </div>
-      <div id="pin-area" style="display:none;margin-top:16px;">
-        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Code PIN</div>
-        <div id="pin-dots" style="display:flex;gap:10px;justify-content:center;margin-bottom:14px;"></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-          ${[1,2,3,4,5,6,7,8,9,'✕',0,'⌫'].map(k => `<div onclick="pinKey('${k}')" style="padding:14px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:${k==='✕'?'var(--red)':k==='⌫'?'var(--muted)':'var(--txt)'};font-size:18px;font-weight:600;cursor:pointer;text-align:center;">${k}</div>`).join('')}
+      <div class="pin-wrap" id="pin-wrap">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Code PIN</div>
+        <div class="pin-dots" id="pin-dots"></div>
+        <div class="pin-grid">
+          ${[1,2,3,4,5,6,7,8,9,'✕',0,'⌫'].map(k => `<div class="pin-btn" onclick="pinKey('${k}')" style="${k==='✕'?'color:var(--red)':k==='⌫'?'color:var(--muted)':''}">${k}</div>`).join('')}
         </div>
-        <div id="pin-error" style="color:var(--red);font-size:12px;margin-top:8px;display:none;">Code incorrect</div>
-        <div onclick="pinTarget=null;pinBuffer='';render()" style="color:var(--muted);font-size:12px;cursor:pointer;margin-top:14px;">← Changer</div>
+        <div class="pin-error" id="pin-error">Code incorrect</div>
+        <div style="color:var(--muted);font-size:11px;cursor:pointer;margin-top:12px" onclick="backToUsers()">← Changer d'utilisateur</div>
       </div>
-    </div>
-  </div>`;
-}
-
-function selectUser(role) {
-  pinTarget = role;
-  pinBuffer = '';
-  renderLogin();
-  $('user-cards').style.display = 'none';
-  $('pin-area').style.display = 'block';
+    </div>`;
   renderPinDots();
 }
 
-function renderPinDots() {
-  $('pin-dots').innerHTML = [0,1,2,3].map(i => `<div style="width:14px;height:14px;border-radius:50%;border:2px solid ${i<pinBuffer.length?'var(--gold)':'var(--div)'};background:${i<pinBuffer.length?'var(--gold)':'transparent'};transition:all .15s;"></div>`).join('');
+function selectUser(id) {
+  pinTarget = id; pinBuffer = '';
+  document.getElementById('user-list').style.display = 'none';
+  document.getElementById('pin-wrap').style.display = 'block';
+  renderPinDots();
 }
-
+function backToUsers() {
+  pinTarget = null; pinBuffer = '';
+  document.getElementById('user-list').style.display = 'block';
+  document.getElementById('pin-wrap').style.display = 'none';
+}
+function renderPinDots() {
+  const el = document.getElementById('pin-dots');
+  if (!el) return;
+  el.innerHTML = [0,1,2,3].map(i => `<div class="pin-dot${i < pinBuffer.length ? ' filled' : ''}"></div>`).join('');
+}
 function pinKey(k) {
   if (k === '✕') { pinBuffer = ''; renderPinDots(); return; }
   if (k === '⌫') { pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
   pinBuffer += k;
   renderPinDots();
   if (pinBuffer.length === 4) {
-    if (USERS[pinTarget] && USERS[pinTarget].pin === pinBuffer) {
+    const user = USERS[pinTarget] || EXTRA_USERS.find(u => u.id === pinTarget);
+    if (user && user.pin === pinBuffer) {
       currentUser = pinTarget;
-      activeTable = null;
+      activeTableId = null;
+      document.getElementById('login').innerHTML = '';
       render();
+      if (!currentSession) showOpenSession();
     } else {
-      $('pin-error').style.display = 'block';
+      document.getElementById('pin-error').style.display = 'block';
       pinBuffer = '';
-      setTimeout(() => { $('pin-error').style.display='none'; renderPinDots(); }, 1200);
+      setTimeout(() => { document.getElementById('pin-error').style.display = 'none'; renderPinDots(); }, 1200);
     }
   }
 }
+function logout() { currentUser = null; activeTableId = null; render(); }
 
-// ═══════════════ TABLE GRID SCREEN ═══════════════
-function renderTables() {
-  const occupied = tables.filter(t => t.status === 'occupied').length;
-  const totalOpen = tables.filter(t => t.status === 'occupied').reduce((s,t) => s + t.total, 0);
+// ═══════════════ HEADER ═══════════════
+function renderHeader() {
+  const hdr = document.getElementById('hdr');
+  hdr.style.display = 'flex';
+  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const occupied = tables.filter(t => t.status !== STATUS.FREE).length;
+  const openTotal = tables.reduce((s,t) => s + t.total, 0);
 
-  app.innerHTML = `
-  <div style="display:flex;flex-direction:column;height:100vh;">
-    <!-- Header -->
-    <header style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:52px;flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:9px;">
-        <div style="width:34px;height:34px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--gold);">${CLIENT_CONFIG.logoLetter}</div>
-        <div><div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);">${CLIENT_CONFIG.name}</div><div style="font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">Café POS</div></div>
+  hdr.innerHTML = `
+    <div class="logo">
+      <div class="logo-circle">${CLIENT_CONFIG.logoLetter}</div>
+      <div><div class="logo-name">${CLIENT_CONFIG.name}</div><div class="logo-sub">Café POS</div></div>
+    </div>
+    <div style="text-align:center"><div id="clock">${nowFull()}</div><div id="clock-date" style="font-size:10px;color:var(--muted)">${new Date().toLocaleDateString('fr-TN',{weekday:'short',day:'numeric',month:'short'})}</div></div>
+    <div class="hdr-right">
+      <div class="hdr-badge hdr-badge-green">🪑 ${occupied}/${tables.length}</div>
+      ${openTotal > 0 ? `<div class="hdr-badge" style="background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);color:var(--gold-l)">${f(openTotal)} ${CLIENT_CONFIG.currency}</div>` : ''}
+      ${currentSession ? `<div class="hdr-badge hdr-badge-green">✓ ${currentSession.cashier}</div>` : ''}
+      ${user.isManager ? `<button class="hdr-btn" onclick="showDashboard()">📊</button>` : ''}
+      <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme">${document.body.classList.contains('light')?'🌙':'☀️'}</button>
+      <button class="hdr-btn" onclick="logout()">⏻ ${user.name||''}</button>
+    </div>`;
+}
+
+// ═══════════════ TABLE PLAN VIEW ═══════════════
+function renderTablePlan() {
+  const main = document.getElementById('main');
+  main.style.display = 'flex';
+  const sectionTables = tables.filter(t => t.section === currentSection);
+
+  main.innerHTML = `
+    <div id="table-area">
+      <div class="section-tabs">
+        ${CLIENT_CONFIG.sections.map(s => `<div class="section-tab${s===currentSection?' on':''}" onclick="setSection('${s}')">${s} (${tables.filter(t=>t.section===s&&t.status!==STATUS.FREE).length})</div>`).join('')}
+        ${F.counterService ? `<div class="section-tab${currentSection==='__counter'?' on':''}" onclick="openCounter()" style="margin-left:auto;border-color:var(--blue);color:var(--blue)">☕ Comptoir</div>` : ''}
       </div>
-      <div style="text-align:center;"><div style="font-size:20px;font-weight:600;" id="clock-main">--:--</div></div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div style="background:rgba(61,184,122,.12);border:1px solid rgba(61,184,122,.3);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--green);">🪑 ${occupied}/${tables.length} occupées</div>
-        <div style="background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--gold-l);">${f(totalOpen)} ${CLIENT_CONFIG.currency} en cours</div>
-        <button onclick="toggleTheme()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:7px 13px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;" id="btn-theme">🌙</button>
-        <button onclick="logout()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:7px 13px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;">⏻ ${USERS[currentUser]?.name}</button>
+      <div id="table-grid">
+        ${sectionTables.map(t => {
+          const cls = 'tbl tbl-' + t.status;
+          const dotCls = t.status===STATUS.OCCUPIED?'tbl-dot tbl-dot-gold':t.status===STATUS.SENT?'tbl-dot tbl-dot-green':t.status===STATUS.BILL?'tbl-dot tbl-dot-orange':t.status===STATUS.CLEAN?'tbl-dot tbl-dot-purple':'';
+          return `<div class="${cls}" onclick="openTable(${t.id})">
+            ${dotCls?`<div class="${dotCls}"></div>`:''}
+            <div class="tbl-icon">${STATUS_ICONS[t.status]}</div>
+            <div class="tbl-num">Table ${t.id}</div>
+            <div class="tbl-info">${STATUS_LABELS[t.status]}${t.items.length?' · '+t.items.length+' art.':''}</div>
+            ${t.total>0?`<div class="tbl-total">${f(t.total)} ${CLIENT_CONFIG.currency}</div>`:''}
+            ${t.openedAt?`<div class="tbl-timer">⏱ ${elapsed(t.openedAt)}</div>`:''}
+            ${t.server?`<div class="tbl-server">👤 ${t.server}</div>`:''}
+          </div>`;
+        }).join('')}
       </div>
-    </header>
+    </div>`;
+}
 
-    <!-- Table Grid -->
-    <div style="flex:1;overflow-y:auto;padding:20px;">
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
-        ${tables.map((t,i) => `
-          <div onclick="openTable(${i})" style="background:${t.status==='occupied'?'linear-gradient(135deg,rgba(200,145,58,.08),var(--card))':'var(--card)'};border:2px solid ${t.status==='occupied'?'var(--gold)':'var(--div)'};border-radius:14px;padding:20px 16px;cursor:pointer;text-align:center;transition:all .15s;position:relative;">
-            ${t.status==='occupied'?'<div style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 2s infinite;"></div>':''}
-            <div style="font-size:28px;margin-bottom:6px;">${t.status==='occupied'?'🪑':'⬜'}</div>
-            <div style="font-size:15px;font-weight:700;">Table ${t.id}</div>
-            ${t.status==='occupied'?`
-              <div style="font-size:11px;color:var(--muted);margin-top:4px;">${t.items.length} article${t.items.length>1?'s':''} · ${t.openedAt||''}</div>
-              <div style="font-size:16px;font-weight:700;color:var(--gold-l);margin-top:6px;">${f(t.total)} ${CLIENT_CONFIG.currency}</div>
-            `:`<div style="font-size:11px;color:var(--muted);margin-top:4px;">Libre</div>`}
+function setSection(s) { currentSection = s; render(); }
+function openTable(id) { activeTableId = id; render(); }
+function backToTables() { activeTableId = null; render(); }
+
+// ═══════════════ ORDER VIEW (table selected) ═══════════════
+function renderOrderView() {
+  const t = getTable(activeTableId);
+  if (!t) { backToTables(); return; }
+  const main = document.getElementById('main');
+  main.style.display = 'flex';
+  const cats = Object.keys(MENU);
+  const items = MENU[currentCat]?.items || [];
+  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const canSettle = user.canSettle || CLIENT_CONFIG.encaissementMode === 'any_server' || user.isManager;
+
+  main.innerHTML = `
+    <div id="table-area" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <!-- Category tabs -->
+      <div class="cat-strip">
+        ${cats.map(c => `<div class="cat-chip${c===currentCat?' on':''}" onclick="setCat('${c}')">${MENU[c].icon} ${c}</div>`).join('')}
+      </div>
+      <!-- Product grid -->
+      <div style="flex:1;overflow-y:auto;padding:10px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${items.map(it => `
+            <div class="prod-card" onclick='addItem(${JSON.stringify(it).replace(/'/g,"&#39;")})'>
+              <div class="prod-em">${it.e}</div>
+              <div class="prod-nm">${it.name}</div>
+              <div class="prod-pr">${f(it.p)} ${CLIENT_CONFIG.currency}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    <div id="order-panel">
+      <div class="op-hdr">
+        <div>
+          <button class="op-btn" onclick="backToTables()">← Tables</button>
+        </div>
+        <div style="text-align:center">
+          <div class="op-table">Table ${t.id}</div>
+          <div style="font-size:10px;color:var(--muted)">${STATUS_LABELS[t.status]}${t.openedAt?' · '+elapsed(t.openedAt):''}</div>
+        </div>
+        <div class="op-actions">
+          ${F.transferTable?`<button class="op-btn" onclick="showTransfer()">↔️</button>`:''}
+          ${F.mergeTable?`<button class="op-btn" onclick="showMerge()">⊕</button>`:''}
+          ${t.items.length?`<button class="op-btn op-btn-red" onclick="clearTable()">✕</button>`:''}
+        </div>
+      </div>
+      <div id="order-items">
+        ${t.items.length === 0 ? `<div class="empty-state"><div class="empty-icon">☕</div><div>Table vide</div><div style="font-size:11px">Cliquez un article pour l'ajouter</div></div>` : ''}
+        ${t.items.map((it, i) => `
+          <div class="oi">
+            <div class="oi-qty">
+              <button class="oi-qb" onclick="changeQty(${i},-1)">−</button>
+              <div class="oi-qv">${it.qty}</div>
+              <button class="oi-qb" onclick="changeQty(${i},1)">+</button>
+            </div>
+            <div class="oi-info">
+              <div class="oi-name">${it.name}</div>
+              ${it.mods&&it.mods.length?`<div class="oi-mods">${it.mods.join(' · ')}</div>`:''}
+              ${it.note?`<div class="oi-note">📝 ${it.note}</div>`:''}
+            </div>
+            <div class="oi-price">${f(it.price * it.qty)}</div>
+            <button class="oi-del" onclick="removeItem(${i})">✕</button>
           </div>
         `).join('')}
       </div>
-    </div>
-  </div>
-  <style>@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}</style>`;
-  startClock();
+      <div id="order-footer">
+        <div class="total-row"><span>Articles</span><span>${t.items.reduce((s,it)=>s+it.qty,0)}</span></div>
+        <div class="total-grand"><span>TOTAL</span><span>${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
+        <div class="pay-btns">
+          ${CLIENT_CONFIG.kitchenPrint&&t.items.length?`<button class="pay-btn pay-btn-orange" onclick="sendToKitchen()">🍳 Envoyer</button>`:''}
+          ${t.status===STATUS.OCCUPIED||t.status===STATUS.SENT?`<button class="pay-btn pay-btn-orange" onclick="requestBill()">📄 Addition</button>`:''}
+          <button class="pay-btn pay-btn-green" onclick="settleTable()" ${!canSettle||t.items.length===0?'disabled':''}>${canSettle?'💰 Encaisser':'🔒 Caissier'}</button>
+        </div>
+        ${CLIENT_CONFIG.printEnabled&&t.items.length?`<button style="width:100%;margin-top:6px;padding:8px;background:var(--card);border:1px solid var(--div);border-radius:6px;color:var(--muted);font-size:11px" onclick="printTableTicket()">🖨️ Imprimer ticket intermédiaire</button>`:''}
+      </div>
+    </div>`;
 }
 
-function openTable(idx) { activeTable = idx; render(); }
-function logout() { currentUser = null; activeTable = null; render(); }
-
-// ═══════════════ TABLE ORDER SCREEN ═══════════════
-function renderTableOrder() {
-  const t = tables[activeTable];
-  const cats = Object.keys(MENU);
-
-  app.innerHTML = `
-  <div style="display:flex;height:100vh;flex-direction:column;">
-    <!-- Header -->
-    <header style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:48px;flex-shrink:0;">
-      <button onclick="backToTables()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:6px 14px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;">← Tables</button>
-      <div style="font-size:16px;font-weight:700;color:var(--gold-l);">🪑 Table ${t.id} ${t.status==='occupied'?'<span style="font-size:11px;color:var(--green);">(depuis '+t.openedAt+')</span>':''}</div>
-      <div style="display:flex;gap:8px;">
-        ${CLIENT_CONFIG.printEnabled?`<button onclick="printTableTicket()" style="background:var(--card);border:1px solid var(--div);border-radius:7px;padding:6px 14px;color:var(--muted);font-size:12px;cursor:pointer;">🖨️ Ticket</button>`:''}
-        <button onclick="settleTable()" style="background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:7px;padding:6px 14px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;" ${t.items.length===0?'disabled style="opacity:.4;cursor:not-allowed;"':''}>💰 Encaisser (${f(t.total)} ${CLIENT_CONFIG.currency})</button>
-      </div>
-    </header>
-
-    <div style="display:flex;flex:1;overflow:hidden;">
-      <!-- Left: Categories + Products -->
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-        <!-- Category tabs -->
-        <div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--div);overflow-x:auto;flex-shrink:0;">
-          ${cats.map(c => `<button onclick="setCat('${c}')" style="padding:7px 14px;border-radius:6px;border:1px solid ${c===cat?'var(--gold)':'var(--div)'};background:${c===cat?'var(--gold-dim)':'var(--card)'};color:${c===cat?'var(--gold-l)':'var(--muted)'};font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">${MENU[c].icon} ${c}</button>`).join('')}
-        </div>
-        <!-- Product grid -->
-        <div style="flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;align-content:start;" id="prod-grid">
-          ${(MENU[cat]?.items||[]).map(it => `
-            <div onclick='addToTable(${JSON.stringify(it).replace(/'/g,"&#39;")})' style="background:var(--card);border:1px solid var(--div);border-radius:10px;padding:12px 10px;cursor:pointer;text-align:center;transition:all .15s;">
-              <div style="font-size:24px;margin-bottom:4px;">${it.e}</div>
-              <div style="font-size:11px;font-weight:600;line-height:1.3;">${it.name}</div>
-              <div style="font-size:13px;font-weight:700;color:var(--gold-l);margin-top:4px;">${it.v?f(it.v[0].p)+'–'+f(it.v[1].p):f(it.p)} <span style="font-size:10px;color:var(--muted);">${CLIENT_CONFIG.currency}</span></div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <!-- Right: Table Items (current order) -->
-      <div style="width:320px;background:var(--panel);border-left:1px solid var(--div);display:flex;flex-direction:column;flex-shrink:0;">
-        <div style="padding:10px 12px;border-bottom:1px solid var(--div);display:flex;justify-content:space-between;align-items:center;">
-          <div><div style="font-weight:700;font-size:14px;">Commande Table ${t.id}</div><div style="font-size:11px;color:var(--muted);">${t.items.length} article${t.items.length>1?'s':''}</div></div>
-          ${t.items.length>0?`<button onclick="clearTable()" style="font-size:10px;color:var(--red);cursor:pointer;padding:3px 8px;border:1px solid rgba(224,82,82,.25);border-radius:4px;background:none;">✕ Vider</button>`:''}
-        </div>
-        <div style="flex:1;overflow-y:auto;" id="table-items">
-          ${t.items.length===0?`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);padding:30px;text-align:center;"><div style="font-size:40px;opacity:.2;">☕</div><div style="margin-top:8px;">Table vide</div><div style="font-size:11px;">Cliquez sur un article pour l'ajouter</div></div>`:''}
-          ${t.items.map((it,i) => `
-            <div style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid rgba(35,28,18,.7);">
-              <div style="display:flex;align-items:center;background:var(--card);border:1px solid var(--div);border-radius:5px;overflow:hidden;">
-                <div onclick="changeQty(${i},-1)" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--muted);">−</div>
-                <div style="width:24px;text-align:center;font-size:12px;font-weight:700;">${it.qty}</div>
-                <div onclick="changeQty(${i},1)" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--muted);">+</div>
-              </div>
-              <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.name}</div><div style="font-size:10px;color:var(--muted);">${it.e} · ${f(it.price)} ${CLIENT_CONFIG.currency}</div></div>
-              <div style="font-size:12px;font-weight:700;color:var(--gold-l);">${f(it.price*it.qty)}</div>
-              <div onclick="removeItem(${i})" style="color:var(--muted);cursor:pointer;font-size:13px;padding:3px;">✕</div>
-            </div>
-          `).join('')}
-        </div>
-        <!-- Total -->
-        <div style="border-top:1px solid var(--div);padding:12px;">
-          <div style="font-size:20px;font-weight:700;display:flex;justify-content:space-between;"><span>TOTAL</span><span style="color:var(--gold-l);">${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
+function setCat(c) { currentCat = c; render(); }
 
 // ═══════════════ TABLE ACTIONS ═══════════════
-function setCat(c) { cat = c; render(); }
-
-function addToTable(item) {
-  const t = tables[activeTable];
-  if (t.status === 'free') {
-    t.status = 'occupied';
+function addItem(item) {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  if (t.status === STATUS.FREE) {
+    t.status = STATUS.OCCUPIED;
     t.openedAt = now();
+    t.server = (USERS[currentUser]||EXTRA_USERS.find(u=>u.id===currentUser)||{}).name || '';
   }
-  // Check if item already exists → increment qty
-  const existing = t.items.find(x => x.id === item.id);
-  if (existing) {
+  // Check modifiers for café items
+  if (F.modifiers && CLIENT_CONFIG.zone1Cats.includes(currentCat)) {
+    showModifiers(item, t);
+    return;
+  }
+  pushItem(t, item, []);
+}
+
+function pushItem(t, item, mods, note) {
+  const modPrice = (mods||[]).reduce((s,m) => s + (m.price||0), 0);
+  const finalPrice = (item.p || 0) + modPrice;
+  const modLabels = (mods||[]).map(m => m.label).filter(Boolean);
+  // Check if same item + same mods exists
+  const existing = t.items.find(x => x.id === item.id && JSON.stringify(x.mods||[]) === JSON.stringify(modLabels));
+  if (existing && !note) {
     existing.qty++;
   } else {
-    t.items.push({ id: item.id, name: item.name, e: item.e, price: item.p || (item.v?item.v[0].p:0), qty: 1 });
+    t.items.push({ id: item.id, name: item.name, e: item.e, price: finalPrice, qty: 1, mods: modLabels, note: note||'', zone: item.zone||'bar', sent: false });
   }
-  recalcTable(activeTable);
+  recalcTable(t);
   saveTables();
   render();
 }
 
 function changeQty(idx, delta) {
-  const t = tables[activeTable];
+  const t = getTable(activeTableId);
+  if (!t) return;
   t.items[idx].qty = Math.max(1, t.items[idx].qty + delta);
-  recalcTable(activeTable);
+  recalcTable(t);
   saveTables();
   render();
 }
 
 function removeItem(idx) {
-  const t = tables[activeTable];
+  const t = getTable(activeTableId);
+  if (!t) return;
   t.items.splice(idx, 1);
-  if (t.items.length === 0) { t.status = 'free'; t.openedAt = null; }
-  recalcTable(activeTable);
+  if (t.items.length === 0) { resetTable(t); }
+  recalcTable(t);
   saveTables();
   render();
 }
 
 function clearTable() {
-  if (!confirm('Vider la table ' + tables[activeTable].id + ' ?')) return;
-  tables[activeTable].items = [];
-  tables[activeTable].total = 0;
-  tables[activeTable].status = 'free';
-  tables[activeTable].openedAt = null;
+  if (!confirm('Vider la table ?')) return;
+  const t = getTable(activeTableId);
+  if (t) resetTable(t);
   saveTables();
   render();
 }
 
-function recalcTable(idx) {
-  tables[idx].total = tables[idx].items.reduce((s, it) => s + it.price * it.qty, 0);
+function resetTable(t) {
+  t.items = []; t.total = 0; t.status = STATUS.FREE;
+  t.openedAt = null; t.server = null; t.sentAt = null; t.billAt = null;
 }
 
-function backToTables() { activeTable = null; render(); }
+function requestBill() {
+  const t = getTable(activeTableId);
+  if (!t || t.items.length === 0) return;
+  t.status = STATUS.BILL;
+  t.billAt = now();
+  saveTables();
+  render();
+  flash('📄 Addition demandée — Table ' + t.id);
+}
 
-// ═══════════════ SETTLE / PAY ═══════════════
+function sendToKitchen() {
+  const t = getTable(activeTableId);
+  if (!t || t.items.length === 0) return;
+  const newItems = t.items.filter(it => !it.sent);
+  if (newItems.length === 0) { flash('✓ Tout déjà envoyé'); return; }
+  // Mark as sent
+  newItems.forEach(it => it.sent = true);
+  t.status = STATUS.SENT;
+  t.sentAt = now();
+  saveTables();
+  // Print kitchen tickets
+  if (CLIENT_CONFIG.kitchenPrint) printKitchenTickets(t, newItems);
+  render();
+  flash('🍳 ' + newItems.length + ' article(s) envoyé(s) en cuisine');
+}
+
+// ═══════════════ TRANSFER TABLE ═══════════════
+function showTransfer() {
+  const t = getTable(activeTableId);
+  if (!t || t.items.length === 0) return;
+  const freeTables = tables.filter(x => x.status === STATUS.FREE && x.id !== t.id);
+  showModal(`
+    <div class="modal-title">↔️ Transférer Table ${t.id}</div>
+    <div class="modal-sub">Vers quelle table ?</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${freeTables.map(x => `<button class="op-btn" style="padding:14px;font-size:13px" onclick="doTransfer(${x.id})">Table ${x.id}</button>`).join('')}
+    </div>
+    ${freeTables.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">Aucune table libre</div>':''}
+    <button class="modal-close" onclick="closeModal()">Annuler</button>
+  `);
+}
+
+function doTransfer(toId) {
+  const from = getTable(activeTableId);
+  const to = getTable(toId);
+  if (!from || !to) return;
+  to.items = [...from.items]; to.total = from.total; to.status = from.status;
+  to.openedAt = from.openedAt; to.server = from.server; to.sentAt = from.sentAt;
+  resetTable(from);
+  activeTableId = toId;
+  saveTables(); closeModal(); render();
+  flash('↔️ Transféré vers Table ' + toId);
+}
+
+// ═══════════════ MERGE TABLES ═══════════════
+function showMerge() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  const occupiedTables = tables.filter(x => x.status !== STATUS.FREE && x.id !== t.id);
+  showModal(`
+    <div class="modal-title">⊕ Fusionner avec Table ${t.id}</div>
+    <div class="modal-sub">Les articles seront ajoutés à cette table</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${occupiedTables.map(x => `<button class="op-btn" style="padding:14px;font-size:13px" onclick="doMerge(${x.id})">Table ${x.id}<br><span style="font-size:10px;color:var(--gold)">${f(x.total)}</span></button>`).join('')}
+    </div>
+    ${occupiedTables.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">Aucune autre table occupée</div>':''}
+    <button class="modal-close" onclick="closeModal()">Annuler</button>
+  `);
+}
+
+function doMerge(fromId) {
+  const to = getTable(activeTableId);
+  const from = getTable(fromId);
+  if (!to || !from) return;
+  to.items = [...to.items, ...from.items];
+  recalcTable(to);
+  if (to.status === STATUS.FREE) { to.status = STATUS.OCCUPIED; to.openedAt = now(); }
+  resetTable(from);
+  saveTables(); closeModal(); render();
+  flash('⊕ Table ' + fromId + ' fusionnée');
+}
+
+// ═══════════════ MODIFIERS MODAL (café items) ═══════════════
+function showModifiers(item, table) {
+  const groups = CLIENT_CONFIG.modifierGroups || [];
+  showModal(`
+    <div class="modal-title">${item.e} ${item.name}</div>
+    <div class="modal-sub">${f(item.p)} ${CLIENT_CONFIG.currency} — Personnaliser</div>
+    <form id="mod-form">
+      ${groups.map((g,gi) => `
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px">${g.name}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${g.options.map((opt,oi) => `
+              <label style="display:flex;align-items:center;gap:4px;padding:6px 10px;background:var(--card);border:1px solid var(--div);border-radius:6px;font-size:11px;cursor:pointer">
+                <input type="radio" name="mod_${gi}" value="${oi}" ${oi===0?'checked':''} style="accent-color:var(--gold)">
+                ${opt}${g.prices[oi]>0?' (+'+f(g.prices[oi])+')':''}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px">Note</div>
+        <input type="text" id="mod-note" placeholder="Note spéciale..." style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+      </div>
+      <button type="button" class="pay-btn pay-btn-green" style="width:100%;padding:12px" onclick="confirmModifiers(${JSON.stringify(item).replace(/"/g,'&quot;')})">✓ Ajouter</button>
+      <button type="button" class="modal-close" onclick="closeModal()">Annuler</button>
+    </form>
+  `);
+}
+
+function confirmModifiers(item) {
+  const groups = CLIENT_CONFIG.modifierGroups || [];
+  const mods = [];
+  groups.forEach((g, gi) => {
+    const sel = document.querySelector(`input[name="mod_${gi}"]:checked`);
+    if (sel) {
+      const idx = parseInt(sel.value);
+      if (idx > 0 || g.prices[idx] > 0) {
+        mods.push({ label: g.options[idx], price: g.prices[idx] || 0 });
+      }
+    }
+  });
+  const note = document.getElementById('mod-note')?.value || '';
+  const t = getTable(activeTableId);
+  if (t) pushItem(t, item, mods, note);
+  closeModal();
+}
+
+// ═══════════════ PAYMENT / SETTLE ═══════════════
 function settleTable() {
-  const t = tables[activeTable];
-  if (t.items.length === 0) return;
+  const t = getTable(activeTableId);
+  if (!t || t.items.length === 0) return;
+  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const canSettle = user.canSettle || CLIENT_CONFIG.encaissementMode === 'any_server' || user.isManager;
+  if (!canSettle) { flash('🔒 Seul le caissier peut encaisser'); return; }
 
-  const confirmed = confirm(`Encaisser Table ${t.id} — ${f(t.total)} ${CLIENT_CONFIG.currency} ?\n\nCliquez OK pour confirmer le paiement.`);
-  if (!confirmed) return;
+  showModal(`
+    <div class="modal-title">💰 Encaisser — Table ${t.id}</div>
+    <div style="background:var(--card);border-radius:8px;padding:12px;margin-bottom:12px;max-height:180px;overflow-y:auto">
+      ${t.items.map(it => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--div)"><span>${it.qty}x ${it.name}</span><span style="color:var(--gold-l)">${f(it.price*it.qty)}</span></div>`).join('')}
+    </div>
+    <div style="font-size:20px;font-weight:700;text-align:center;margin:12px 0;color:var(--gold-l)">${f(t.total)} ${CLIENT_CONFIG.currency}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;text-align:center">Mode de paiement</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="op-btn" style="flex:1;padding:10px" id="pay-cash" onclick="selectPay('cash')"><div>💵</div>Espèces</button>
+      <button class="op-btn" style="flex:1;padding:10px" id="pay-card" onclick="selectPay('card')"><div>💳</div>Carte</button>
+      <button class="op-btn" style="flex:1;padding:10px" id="pay-mob" onclick="selectPay('mob')"><div>📱</div>Mobile</button>
+    </div>
+    ${F.splitBill ? `<button class="op-btn" style="width:100%;padding:10px;margin-bottom:10px" onclick="showSplitBill()">✂️ Diviser l'addition</button>` : ''}
+    <button class="pay-btn pay-btn-green" style="width:100%;padding:14px;font-size:14px" onclick="confirmSettle()">✓ Confirmer le paiement</button>
+    <button class="modal-close" onclick="closeModal()">Annuler</button>
+  `, 'settle-modal');
+  selectedPay = 'cash';
+  document.getElementById('pay-cash').style.borderColor = 'var(--gold)';
+  document.getElementById('pay-cash').style.color = 'var(--gold-l)';
+}
 
-  // Save sale to SQLite (if available)
+let selectedPay = 'cash';
+function selectPay(mode) {
+  selectedPay = mode;
+  ['cash','card','mob'].forEach(m => {
+    const el = document.getElementById('pay-'+m);
+    if (el) { el.style.borderColor = m===mode?'var(--gold)':'var(--div)'; el.style.color = m===mode?'var(--gold-l)':'var(--muted)'; }
+  });
+}
+
+function confirmSettle() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+
   const saleData = {
     num: orderNum++,
     businessDate: todayKey(),
     date: new Date().toLocaleDateString('fr-TN'),
     time: now(),
-    items: t.items.map(it => ({ name: it.name, qty: it.qty, price: it.price })),
-    s: t.total,
-    d: 0,
-    disc: 0,
-    g: t.total,
-    payMode: 'cash',
-    r: t.total,
-    monnaie: 0,
-    cashier: USERS[currentUser]?.name || 'Caissier',
-    type: 'table',
-    cliName: 'Table ' + t.id,
-    cliTel: '',
+    items: t.items.map(it => ({ name: it.name, qty: it.qty, price: it.price, mods: it.mods })),
+    s: t.total, d: 0, disc: 0, g: t.total,
+    payMode: selectedPay, r: t.total, monnaie: 0,
+    cashier: user.name || 'Caissier',
+    type: 'table', cliName: 'Table ' + t.id, cliTel: '',
   };
 
-  // Save to SQLite via IPC
-  if (window.electronAPI?.saveSale) {
-    window.electronAPI.saveSale(saleData);
-  }
-
+  // Save locally
+  if (window.electronAPI?.saveSale) window.electronAPI.saveSale(saleData);
   // Sync to server
   syncSale(saleData);
+  // Update daily
+  dailyTotal += t.total;
+  history.push(saleData);
 
-  // Print if enabled
-  if (CLIENT_CONFIG.printEnabled) {
-    printReceipt(t, saleData);
-  }
+  // Print receipt
+  if (CLIENT_CONFIG.printEnabled) printReceipt(t, saleData);
 
   // Clear table
-  t.items = [];
-  t.total = 0;
-  t.status = 'free';
-  t.openedAt = null;
+  resetTable(t);
   saveTables();
-  activeTable = null;
+  activeTableId = null;
+  closeModal();
   render();
-  flash('✅ Table ' + t.id + ' encaissée — ' + f(saleData.g) + ' ' + CLIENT_CONFIG.currency);
+  flash('✅ Table ' + saleData.cliName.replace('Table ','') + ' encaissée — ' + f(saleData.g) + ' ' + CLIENT_CONFIG.currency);
 }
 
+// ═══════════════ SPLIT BILL ═══════════════
+function showSplitBill() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  showModal(`
+    <div class="modal-title">✂️ Diviser l'addition — Table ${t.id}</div>
+    <div class="modal-sub">Total: ${f(t.total)} ${CLIENT_CONFIG.currency}</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="op-btn" style="padding:14px;font-size:13px" onclick="splitByPersons()">👥 Diviser par nombre de personnes</button>
+      <button class="op-btn" style="padding:14px;font-size:13px" onclick="splitByAmount()">💰 Montant libre</button>
+      <button class="op-btn" style="padding:14px;font-size:13px" onclick="splitByItems()">📋 Par article (sélectionner)</button>
+    </div>
+    <button class="modal-close" onclick="closeModal()">Annuler</button>
+  `, 'split-modal');
+}
+
+function splitByPersons() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  const persons = parseInt(prompt('Nombre de personnes ?'));
+  if (!persons || persons < 2) return;
+  const perPerson = t.total / persons;
+  closeModal();
+  flash(`✂️ ${f(perPerson)} ${CLIENT_CONFIG.currency} par personne (${persons} pers.)`);
+}
+
+function splitByAmount() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  const amount = parseFloat(prompt(`Montant à encaisser (total: ${f(t.total)}) ?`));
+  if (!amount || amount <= 0 || amount > t.total) return;
+  // Partial payment — reduce total
+  const remaining = t.total - amount;
+  const saleData = {
+    num: orderNum++, businessDate: todayKey(), date: new Date().toLocaleDateString('fr-TN'), time: now(),
+    items: [{ name: 'Paiement partiel Table ' + t.id, qty: 1, price: amount }],
+    s: amount, d: 0, disc: 0, g: amount, payMode: selectedPay||'cash', r: amount, monnaie: 0,
+    cashier: (USERS[currentUser]||{}).name||'Caissier', type: 'table', cliName: 'Table '+t.id, cliTel: '',
+  };
+  if (window.electronAPI?.saveSale) window.electronAPI.saveSale(saleData);
+  syncSale(saleData);
+  dailyTotal += amount;
+  t.total = remaining;
+  if (remaining <= 0) { resetTable(t); activeTableId = null; }
+  saveTables(); closeModal(); render();
+  flash(`✂️ ${f(amount)} encaissé — reste ${f(remaining)}`);
+}
+
+function splitByItems() {
+  // Simplified: just shows items with checkboxes
+  const t = getTable(activeTableId);
+  if (!t) return;
+  closeModal();
+  showModal(`
+    <div class="modal-title">📋 Sélectionner les articles à encaisser</div>
+    <form id="split-items-form">
+      ${t.items.map((it,i) => `<label style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--div);cursor:pointer"><input type="checkbox" name="split_${i}" style="accent-color:var(--gold)"><span style="flex:1;font-size:12px">${it.qty}x ${it.name}</span><span style="font-size:12px;color:var(--gold-l)">${f(it.price*it.qty)}</span></label>`).join('')}
+      <button type="button" class="pay-btn pay-btn-green" style="width:100%;padding:12px;margin-top:12px" onclick="confirmSplitItems()">✓ Encaisser la sélection</button>
+      <button type="button" class="modal-close" onclick="closeModal()">Annuler</button>
+    </form>
+  `);
+}
+
+function confirmSplitItems() {
+  const t = getTable(activeTableId);
+  if (!t) return;
+  const checked = [];
+  t.items.forEach((it, i) => {
+    if (document.querySelector(`input[name="split_${i}"]`)?.checked) checked.push(i);
+  });
+  if (checked.length === 0) return;
+  const selectedItems = checked.map(i => t.items[i]);
+  const amount = selectedItems.reduce((s,it) => s + it.price*it.qty, 0);
+  const saleData = {
+    num: orderNum++, businessDate: todayKey(), date: new Date().toLocaleDateString('fr-TN'), time: now(),
+    items: selectedItems.map(it => ({ name: it.name, qty: it.qty, price: it.price })),
+    s: amount, d: 0, disc: 0, g: amount, payMode: 'cash', r: amount, monnaie: 0,
+    cashier: (USERS[currentUser]||{}).name||'Caissier', type: 'table', cliName: 'Table '+t.id, cliTel: '',
+  };
+  if (window.electronAPI?.saveSale) window.electronAPI.saveSale(saleData);
+  syncSale(saleData); dailyTotal += amount;
+  // Remove settled items
+  t.items = t.items.filter((_, i) => !checked.includes(i));
+  recalcTable(t);
+  if (t.items.length === 0) { resetTable(t); activeTableId = null; }
+  saveTables(); closeModal(); render();
+  flash(`✂️ ${f(amount)} encaissé (${checked.length} articles)`);
+}
+
+// ═══════════════ SESSION CAISSE ═══════════════
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORE.session);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (s && s.date === todayKey()) return s;
+    localStorage.removeItem(STORE.session);
+  } catch(e) {}
+  return null;
+}
+currentSession = loadSession();
+
+function saveSession() {
+  if (currentSession) localStorage.setItem(STORE.session, JSON.stringify(currentSession));
+  else localStorage.removeItem(STORE.session);
+}
+
+function showOpenSession() {
+  const user = USERS[currentUser] || {};
+  const modals = document.getElementById('modals');
+  modals.innerHTML = `<div class="session-overlay" onclick="if(event.target===this)closeSessionModal()">
+    <div class="session-box">
+      <div style="font-size:40px;margin-bottom:8px">💰</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);margin-bottom:6px">Ouverture de Caisse</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:18px">Saisissez le fond de caisse initial</div>
+      <div style="margin-bottom:12px"><input id="fond-inp" type="number" step="0.5" placeholder="0.000" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:20px;font-weight:700;text-align:center;outline:none" autocomplete="off"></div>
+      <button onclick="confirmOpenSession()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">✓ Ouvrir la caisse</button>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('fond-inp')?.focus(), 100);
+}
+
+function confirmOpenSession() {
+  const fond = parseFloat(document.getElementById('fond-inp')?.value) || 0;
+  const user = USERS[currentUser] || EXTRA_USERS.find(u=>u.id===currentUser) || {};
+  currentSession = { id: Date.now(), fondInitial: fond, openedAt: now(), cashier: user.name||'Caissier', date: todayKey() };
+  saveSession();
+  if (window.electronAPI?.saveSession) window.electronAPI.saveSession({ businessDate: todayKey(), cashier: currentSession.cashier, openedAt: currentSession.openedAt, fondInitial: fond });
+  closeSessionModal();
+  render();
+  flash('✅ Caisse ouverte — Fond: ' + f(fond) + ' ' + CLIENT_CONFIG.currency);
+}
+
+function closeSessionModal() { document.getElementById('modals').innerHTML = ''; }
+
 // ═══════════════ PRINTING ═══════════════
-function printTableTicket() {
-  if (!CLIENT_CONFIG.printEnabled) return;
-  const t = tables[activeTable];
-  if (t.items.length === 0) return;
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:4mm;}
-  .c{text-align:center;}.b{font-weight:700;}.div{border-top:1px dashed #000;margin:4px 0;}
-  .r{display:flex;justify-content:space-between;}.lg{font-size:16px;letter-spacing:2px;}
-  </style></head><body>
-  <div class="c lg b">${CLIENT_CONFIG.name}</div>
-  <div class="c" style="font-size:10px;">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
-  <div class="div"></div>
-  <div class="c b">TABLE ${t.id} — EN COURS</div>
-  <div class="c" style="font-size:10px;">${new Date().toLocaleDateString('fr-TN')} ${now()}</div>
-  <div class="div"></div>
-  ${t.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
-  <div class="div"></div>
-  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
-  <div class="div"></div>
-  <div class="c" style="font-size:10px;margin-top:4px;">Ticket intermédiaire — non payé</div>
-  </body></html>`;
-
-  if (window.electronAPI?.printReceipt) {
+function printKitchenTickets(t, items) {
+  if (!window.electronAPI?.printReceipt) return;
+  // Group by zone
+  const zones = {};
+  items.forEach(it => {
+    const z = it.zone || 'bar';
+    if (!zones[z]) zones[z] = [];
+    zones[z].push(it);
+  });
+  for (const [zone, zItems] of Object.entries(zones)) {
+    const zoneLabel = zone === 'cuisine' ? CLIENT_CONFIG.zone2Label : CLIENT_CONFIG.zone1Label;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:'Courier New',monospace;font-size:13px;width:72mm;margin:0;padding:3mm}.c{text-align:center}.b{font-weight:700}.div{border-top:1px dashed #000;margin:4px 0}.r{display:flex;justify-content:space-between}</style></head><body>
+    <div class="c b" style="font-size:16px">🍳 CUISINE</div>
+    <div class="c" style="font-size:10px">${zoneLabel}</div>
+    <div class="div"></div>
+    <div class="c b" style="font-size:14px">TABLE ${t.id}</div>
+    <div class="c" style="font-size:10px">${now()} · ${t.server||''}</div>
+    <div class="div"></div>
+    ${zItems.map(it => `<div class="r"><span class="b">${it.qty}x ${it.name}</span></div>${it.mods&&it.mods.length?'<div style="font-size:10px;margin-left:12px">→ '+it.mods.join(', ')+'</div>':''}${it.note?'<div style="font-size:10px;margin-left:12px;font-style:italic">📝 '+it.note+'</div>':''}`).join('')}
+    <div class="div"></div>
+    <div class="c" style="font-size:10px">${new Date().toLocaleDateString('fr-TN')} ${now()}</div>
+    </body></html>`;
     window.electronAPI.printReceipt(html);
   }
+}
+
+function printTableTicket() {
+  if (!window.electronAPI?.printReceipt) return;
+  const t = getTable(activeTableId);
+  if (!t || t.items.length === 0) return;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:3mm}.c{text-align:center}.b{font-weight:700}.div{border-top:1px dashed #000;margin:4px 0}.r{display:flex;justify-content:space-between}</style></head><body>
+  <div class="c b" style="font-size:15px;letter-spacing:1px">${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:9px">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
+  <div class="div"></div>
+  <div class="c b">TABLE ${t.id} — EN COURS</div>
+  <div class="c" style="font-size:10px">${new Date().toLocaleDateString('fr-TN')} ${now()}</div>
+  <div class="div"></div>
+  ${t.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}${it.mods&&it.mods.length?' ('+it.mods.join(',')+')':''}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
+  <div class="div"></div>
+  <div class="r b" style="font-size:14px"><span>TOTAL</span><span>${f(t.total)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="div"></div>
+  <div class="c" style="font-size:9px;margin-top:3px">Ticket intermédiaire — non payé</div>
+  </body></html>`;
+  window.electronAPI.printReceipt(html);
+  flash('🖨️ Ticket imprimé');
 }
 
 function printReceipt(t, sale) {
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:4mm;}
-  .c{text-align:center;}.b{font-weight:700;}.div{border-top:1px dashed #000;margin:4px 0;}
-  .r{display:flex;justify-content:space-between;}.lg{font-size:16px;letter-spacing:2px;}
-  </style></head><body>
-  <div class="c lg b">${CLIENT_CONFIG.name}</div>
-  <div class="c" style="font-size:10px;">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
+  if (!window.electronAPI?.printReceipt) return;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:'Courier New',monospace;font-size:12px;width:72mm;margin:0;padding:3mm}.c{text-align:center}.b{font-weight:700}.div{border-top:1px dashed #000;margin:4px 0}.r{display:flex;justify-content:space-between}</style></head><body>
+  <div class="c b" style="font-size:15px;letter-spacing:1px">${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:9px">${CLIENT_CONFIG.city} · ${CLIENT_CONFIG.phone}</div>
   <div class="div"></div>
   <div class="c b">REÇU — TABLE ${t.id}</div>
-  <div class="c" style="font-size:10px;">N° ${String(sale.num).padStart(3,'0')} · ${sale.date} ${sale.time}</div>
-  <div class="c" style="font-size:10px;">Serveur: ${sale.cashier}</div>
+  <div class="c" style="font-size:10px">N° ${String(sale.num).padStart(3,'0')} · ${sale.date} ${sale.time}</div>
+  <div class="c" style="font-size:10px">Serveur: ${sale.cashier}</div>
   <div class="div"></div>
   ${sale.items.map(it => `<div class="r"><span>${it.qty}x ${it.name}</span><span>${f(it.price*it.qty)}</span></div>`).join('')}
   <div class="div"></div>
-  <div class="r b" style="font-size:14px;"><span>TOTAL</span><span>${f(sale.g)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="r b" style="font-size:14px"><span>TOTAL</span><span>${f(sale.g)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="r" style="font-size:10px"><span>Paiement</span><span>${sale.payMode==='cash'?'Espèces':sale.payMode==='card'?'Carte':'Mobile'}</span></div>
   <div class="div"></div>
-  <div class="c" style="font-size:10px;margin-top:4px;">Merci de votre visite!</div>
-  <div class="c" style="font-size:9px;">Powered by Servio OS</div>
+  <div class="c" style="font-size:9px;margin-top:3px">Merci de votre visite!</div>
+  <div class="c" style="font-size:8px">Powered by Servio OS</div>
   </body></html>`;
-
-  if (window.electronAPI?.printReceipt) {
-    window.electronAPI.printReceipt(html);
-  }
+  window.electronAPI.printReceipt(html);
 }
 
-// ═══════════════ SYNC ═══════════════
-let syncQueue = JSON.parse(localStorage.getItem('cafe-sync-queue') || '[]');
-function saveQueue() { localStorage.setItem('cafe-sync-queue', JSON.stringify(syncQueue)); }
+// ═══════════════ COUNTER SERVICE (Comptoir) ═══════════════
+function openCounter() {
+  // Counter = virtual table with ID 0, no section
+  currentSection = '__counter';
+  let counter = tables.find(t => t.id === 0);
+  if (!counter) {
+    counter = { id: 0, section: '__counter', status: STATUS.FREE, items: [], total: 0, openedAt: null, server: null, sentAt: null, billAt: null };
+    tables.push(counter);
+  }
+  activeTableId = 0;
+  render();
+}
+
+// ═══════════════ SYNC & LICENSE ═══════════════
+let syncQueue = JSON.parse(localStorage.getItem(STORE.queue) || '[]');
+function saveQueue() { localStorage.setItem(STORE.queue, JSON.stringify(syncQueue)); }
 
 async function syncSale(od) {
   if (!SYNC_ENABLED) return;
   try {
-    const res = await fetch(SYNC_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
-      body: JSON.stringify(od)
-    });
+    const res = await fetch(SYNC_API_URL, { method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':SYNC_API_KEY}, body:JSON.stringify(od) });
     const data = await res.json();
     if (data.ok) { flushQueue(); return true; }
-  } catch(e) {
-    syncQueue.push(od); saveQueue();
-  }
+  } catch(e) { syncQueue.push(od); saveQueue(); }
   return false;
 }
 
@@ -517,10 +1144,16 @@ async function flushQueue() {
     } catch(e) { remaining.push(od); }
   }
   syncQueue = remaining; saveQueue();
+  updateSyncStatus();
 }
-window.addEventListener('online', () => { flushQueue(); });
+window.addEventListener('online', () => { flushQueue(); flash('☁ Synchronisation...'); });
 
-// ═══════════════ LICENSE CHECK ═══════════════
+function updateSyncStatus() {
+  const el = document.getElementById('status-sync');
+  if (el) el.textContent = syncQueue.length > 0 ? `⏳ ${syncQueue.length} en attente` : '☁ Synchro OK';
+}
+
+// ── License check ──
 const CHECK_URL = SYNC_API_URL.replace('/api/sync', '/api/check');
 async function checkLicense() {
   if (!SYNC_ENABLED) return;
@@ -528,12 +1161,11 @@ async function checkLicense() {
     const res = await fetch(CHECK_URL + '?key=' + SYNC_API_KEY, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
     if (data.ok && data.active === false) {
-      app.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);">
-        <div style="background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;">
-          <div style="font-size:56px;margin-bottom:12px;">🔒</div>
-          <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--red);margin-bottom:14px;">Application Suspendue</div>
-          <div style="font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;">${data.message||'Contactez le développeur.'}</div>
-        </div></div>`;
+      document.getElementById('lock-msg').textContent = data.message || 'Contactez le développeur.';
+      document.getElementById('remote-lock').classList.add('active');
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('hdr').style.display = 'none';
+      document.getElementById('main').style.display = 'none';
     }
   } catch(e) { /* offline — don't block */ }
 }
@@ -544,25 +1176,69 @@ setInterval(checkLicense, 30 * 60 * 1000);
 function toggleTheme() {
   const isLight = document.body.classList.contains('light');
   document.body.classList.toggle('light', !isLight);
-  localStorage.setItem('cafe-theme', isLight ? 'dark' : 'light');
+  localStorage.setItem(STORE.theme, isLight ? 'dark' : 'light');
+  render();
 }
-(function(){ const t = localStorage.getItem('cafe-theme'); if(t==='light') document.body.classList.add('light'); })();
+(function() { if (localStorage.getItem(STORE.theme) === 'light') document.body.classList.add('light'); })();
 
 // ═══════════════ CLOCK ═══════════════
-function startClock() {
-  const el = document.getElementById('clock-main');
-  if (el) el.textContent = new Date().toLocaleTimeString('fr-TN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  setTimeout(startClock, 1000);
+setInterval(() => {
+  const el = document.getElementById('clock');
+  if (el) el.textContent = nowFull();
+}, 1000);
+
+// ═══════════════ MODAL SYSTEM ═══════════════
+function showModal(html, id) {
+  const modals = document.getElementById('modals');
+  modals.innerHTML = `<div class="modal-bg show" onclick="if(event.target===this)closeModal()"><div class="modal-box">${html}</div></div>`;
+}
+function closeModal() { document.getElementById('modals').innerHTML = ''; }
+
+// ═══════════════ STATUS BAR ═══════════════
+function renderStatusBar() {
+  const bar = document.getElementById('statusbar');
+  bar.style.display = 'flex';
+  updateSyncStatus();
 }
 
-// ═══════════════ FLASH MESSAGE ═══════════════
+// ═══════════════ DASHBOARD (simple) ═══════════════
+function showDashboard() {
+  const todaySales = history.filter(s => s.businessDate === todayKey());
+  const total = todaySales.reduce((s,x) => s + (x.g||0), 0);
+  const count = todaySales.length;
+  showModal(`
+    <div class="modal-title">📊 Tableau de bord — Aujourd'hui</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--gold-l)">${f(total)}</div><div style="font-size:10px;color:var(--muted)">Recette</div></div>
+      <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--green)">${count}</div><div style="font-size:10px;color:var(--muted)">Commandes</div></div>
+      <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--blue)">${count?f(total/count):'0.000'}</div><div style="font-size:10px;color:var(--muted)">Ticket moyen</div></div>
+    </div>
+    ${todaySales.length?`<div style="max-height:200px;overflow-y:auto">${todaySales.slice(0,20).map(s => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span>#${String(s.num).padStart(3,'0')} ${s.time} · ${s.cliName}</span><span style="color:var(--gold-l);font-weight:700">${f(s.g)}</span></div>`).join('')}</div>`:'<div style="text-align:center;color:var(--muted);padding:20px">Aucune vente aujourd\'hui</div>'}
+    <button class="modal-close" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+// ═══════════════ FLASH ═══════════════
 function flash(msg) {
   const el = document.createElement('div');
-  el.textContent = msg;
-  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--gold);border-radius:8px;padding:10px 20px;color:var(--gold-l);font-size:13px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);';
+  el.className = 'toast'; el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2500);
 }
+
+// ═══════════════ HYDRATE STATE FROM SQLITE ═══════════════
+async function hydrateState() {
+  try {
+    if (!window.electronAPI?.getSales) return;
+    const sales = await window.electronAPI.getSales();
+    if (!Array.isArray(sales)) return;
+    history = sales.map(s => ({ num:s.num, businessDate:s.businessDate, date:s.date, time:s.time, items:s.items||[], s:s.sub, d:s.discount, disc:s.disc, g:s.grand, payMode:s.payMethod, r:s.received, monnaie:s.monnaie, cashier:s.cashier, type:s.type, cliName:s.cliName||'', cliTel:'' }));
+    const todaySales = history.filter(s => s.businessDate === todayKey());
+    dailyTotal = todaySales.reduce((s,x) => s + (x.g||0), 0);
+    orderNum = todaySales.length ? Math.max(...todaySales.map(s => s.num||0)) + 1 : 1;
+  } catch(e) { console.warn('Hydrate failed:', e); }
+}
+hydrateState();
 
 // ═══════════════ START ═══════════════
 render();
