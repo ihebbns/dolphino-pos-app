@@ -402,6 +402,19 @@ function f(n) { return Number(n || 0).toFixed(3); }
 function now() { return new Date().toLocaleTimeString('fr-TN', { hour:'2-digit', minute:'2-digit' }); }
 function nowFull() { return new Date().toLocaleTimeString('fr-TN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
 function todayKey() { const d = new Date(); if (d.getHours() < 5) d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// ═══ AUTO DAY-CLOSE (Toast-style: 5 AM) ═══
+let _businessDay = todayKey();
+setInterval(() => {
+  const now = todayKey();
+  if (now !== _businessDay) {
+    _businessDay = now;
+    orderNum = 1;
+    dailyTotal = 0;
+    if (currentSession && currentSession.date !== now) { currentSession = null; saveSession(); }
+    flash('🌅 Nouveau jour — Ticket #001');
+  }
+}, 30000);
 function elapsed(timeStr) {
   if (!timeStr) return '';
   const parts = timeStr.split(':');
@@ -1192,18 +1205,9 @@ function toggleTheme() {
 (function() { if (localStorage.getItem(STORE.theme) === 'light') document.body.classList.add('light'); })();
 
 // ═══════════════ CLOCK ═══════════════
-let _lastDay = todayKey();
 setInterval(() => {
   const el = document.getElementById('clock');
   if (el) el.textContent = nowFull();
-  // Check if business day changed (5 AM cutoff) → reset tickets
-  const today = todayKey();
-  if (today !== _lastDay) {
-    _lastDay = today;
-    orderNum = 1;
-    dailyTotal = 0;
-    flash('🌅 Nouveau jour — Tickets réinitialisés à #001');
-  }
 }, 1000);
 
 // ═══════════════ MODAL SYSTEM ═══════════════

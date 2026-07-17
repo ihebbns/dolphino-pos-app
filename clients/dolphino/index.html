@@ -909,6 +909,10 @@ async function confirmOpenCaisse(){
   saveSessionToStorage();
   destroySessionModal();
 
+  // Ticket numbering is handled by auto day-close (Toast-style).
+  // A new session within the same day does NOT reset ticket numbers.
+  // Only a new business day (5 AM) resets to #001.
+
   // Show caissier + fond badge in header
   const badge = document.getElementById('session-badge-hdr');
   const disp  = document.getElementById('session-fond-display');
@@ -1011,12 +1015,48 @@ window.addEventListener('online', () => {
 
 function todayKey(){
   const d=new Date();
-  // Business day runs until 5 AM — before 5 AM still counts as yesterday
+  // Business day closes at 5 AM (like Toast at 4 AM) — before 5 AM = still yesterday
   if (d.getHours() < 5) {
     d.setDate(d.getDate() - 1);
   }
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+
+// ═══════════════ AUTO DAY-CLOSE (Toast-style) ═══════════════
+// At 5:00 AM the business day automatically closes:
+// - Ticket number resets to #001
+// - Daily total resets to 0
+// - Session is auto-closed if still open from previous day
+// This is the industry standard (Toast uses 4 AM, we use 5 AM).
+let _businessDay = todayKey();
+
+function checkDayChange() {
+  const now = todayKey();
+  if (now !== _businessDay) {
+    _businessDay = now;
+    // ── Auto day-close ──
+    orderNum = 1;
+    daily = 0;
+    hist = [];
+    localStorage.removeItem(STORE_KEY);
+    businessStateReady = null;
+    // Auto-close old session if still open
+    if (currentSession && currentSession.date !== now) {
+      currentSession = null;
+      saveSessionToStorage();
+    }
+    // Update UI
+    const onum = document.getElementById('onum');
+    if (onum) onum.textContent = '#001';
+    const dt = document.getElementById('dt');
+    if (dt) dt.textContent = 'Ventes du jour : 0.000 DT';
+    updateCaisseButton();
+    updBtn();
+    flash('🌅 Nouveau jour — Ticket #001');
+  }
+}
+// Check every 30 seconds
+setInterval(checkDayChange, 30000);
 function resetBusinessDay(){
   daily=0;
   hist=[];
@@ -1313,39 +1353,12 @@ function addMenuItem(){
 }
 
 // ═══════════════ CLOCK ═══════════════
-let _lastDay = todayKey();
 function tick(){
   const n=new Date();
   const el=document.getElementById('clock');
   if(el)el.textContent=n.toLocaleTimeString('fr-TN');
   const dl=document.getElementById('datel');
   if(dl)dl.textContent=n.toLocaleDateString('fr-TN',{weekday:'short',day:'numeric',month:'short'});
-
-  // ── 05:00 AM reset: new day → restart order numbering from #001 ──
-  const today=todayKey();
-  const hour=n.getHours();
-  const resetKey=today+'_05reset';
-  if(today !== _lastDay && hour >= 5){
-    _lastDay=today;
-    daily=0;
-    hist=[];
-    orderNum=1;
-    localStorage.removeItem(STORE_KEY);
-    businessStateReady=null;
-    // Clear any old session from previous day
-    const oldSession = loadSessionFromStorage();
-    if(oldSession && oldSession.date !== today) {
-      currentSession = null;
-      saveSessionToStorage();
-    }
-    const onum=document.getElementById('onum');
-    if(onum)onum.textContent='#001';
-    const dt=document.getElementById('dt');
-    if(dt)dt.textContent='Ventes du jour : 0.000 DT';
-    updateCaisseButton();
-    updBtn();
-    flash('🌅 Nouveau jour — Tickets réinitialisés à #001');
-  }
 }
 tick();setInterval(tick,1000);
 
@@ -2030,14 +2043,15 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   saveSessionToStorage();
   document.getElementById('session-badge-hdr').style.display = 'none';
 
-  // Reset today's running totals so the NEXT session (if caisse is reopened the
-  // same day) starts from zero instead of re-adding everything already clôturé.
-  // The ticket counter (orderNum) is intentionally NOT reset here — it must
-  // keep incrementing across sessions within the same business day.
+  // Reset today's running totals + ticket counter for next session
   hist = [];
   daily = 0;
+  orderNum = 1;
   localStorage.removeItem(STORE_KEY);
   document.getElementById('dt').textContent = 'Ventes du jour : 0.000 DT';
+  const onum = document.getElementById('onum');
+  if (onum) onum.textContent = '#001';
+  businessStateReady = null;
 
   // Update button: now shows "💰 Ouvrir la caisse"
   updateCaisseButton();
