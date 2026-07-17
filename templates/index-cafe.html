@@ -1192,9 +1192,18 @@ function toggleTheme() {
 (function() { if (localStorage.getItem(STORE.theme) === 'light') document.body.classList.add('light'); })();
 
 // ═══════════════ CLOCK ═══════════════
+let _lastDay = todayKey();
 setInterval(() => {
   const el = document.getElementById('clock');
   if (el) el.textContent = nowFull();
+  // Check if business day changed (5 AM cutoff) → reset tickets
+  const today = todayKey();
+  if (today !== _lastDay) {
+    _lastDay = today;
+    orderNum = 1;
+    dailyTotal = 0;
+    flash('🌅 Nouveau jour — Tickets réinitialisés à #001');
+  }
 }, 1000);
 
 // ═══════════════ MODAL SYSTEM ═══════════════
