@@ -909,15 +909,6 @@ async function confirmOpenCaisse(){
   saveSessionToStorage();
   destroySessionModal();
 
-  // Reset ticket number for new business day
-  // If this is the first session of a new day, start from #001
-  const currentDay = todayKey();
-  const todaySales = hist.filter(s => s.businessDate === currentDay);
-  if (todaySales.length === 0) {
-    orderNum = 1;
-  }
-  lastBusinessDate = currentDay;
-
   // Show caissier + fond badge in header
   const badge = document.getElementById('session-badge-hdr');
   const disp  = document.getElementById('session-fond-display');
@@ -1020,25 +1011,12 @@ window.addEventListener('online', () => {
 
 function todayKey(){
   const d=new Date();
-  // Business day ends at 5 AM — if it's before 5 AM, it's still "yesterday"
+  // Business day runs until 5 AM — before 5 AM still counts as yesterday
   if (d.getHours() < 5) {
     d.setDate(d.getDate() - 1);
   }
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
-// ── Auto-reset ticket number when business day changes (e.g. at 5 AM) ──
-let lastBusinessDate = todayKey();
-setInterval(function() {
-  const newDate = todayKey();
-  if (newDate !== lastBusinessDate) {
-    lastBusinessDate = newDate;
-    orderNum = 1;
-    daily = 0;
-    flash('🌅 Nouveau jour — Ticket remis à #001');
-  }
-}, 30000); // check every 30 seconds
-
 function resetBusinessDay(){
   daily=0;
   hist=[];
@@ -1965,17 +1943,11 @@ function setDrinkStock(id){
 function cloturerJournee(){
   if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
 
-  // Only count sales since current session was opened
-  const sessionOpenTime = currentSession?.openedAt || '00:00';
-  const sessionSales = hist.filter(h => {
-    // If we have session info, only count sales from this session
-    return h.businessDate === todayKey();
-  });
-  const total = sessionSales.reduce((a,h)=>a+h.g,0);
-  const count = sessionSales.length;
-  const cash  = sessionSales.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
-  const card  = sessionSales.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
-  const mob   = sessionSales.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
+  const total = hist.reduce((a,h)=>a+h.g,0);
+  const count = hist.length;
+  const cash  = hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const card  = hist.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
+  const mob   = hist.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
   const fond  = currentSession?.fondInitial || 0;
   const theorique = fond + cash; // cash + fond initial = what should be in drawer
   const now   = new Date();

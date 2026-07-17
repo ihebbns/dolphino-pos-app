@@ -1011,6 +1011,10 @@ window.addEventListener('online', () => {
 
 function todayKey(){
   const d=new Date();
+  // Business day runs until 5 AM — before 5 AM still counts as yesterday
+  if (d.getHours() < 5) {
+    d.setDate(d.getDate() - 1);
+  }
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function resetBusinessDay(){
