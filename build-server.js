@@ -142,6 +142,86 @@ function tryConvertIcon(base64Data, destPath) {
   }
 }
 
+// ── Generate simple colored PNG icon (no external deps) ──
+// Creates a 64x64 PNG with a solid background color derived from the client name
+function generateSimpleIcon(letter, name) {
+  try {
+    // Generate a unique color from the name
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+    const hue = Math.abs(hash) % 360;
+    // Convert HSL to RGB (saturation 60%, lightness 45%)
+    const s = 0.6, l = 0.45;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r, g, b;
+    if (hue < 60) { r = c; g = x; b = 0; }
+    else if (hue < 120) { r = x; g = c; b = 0; }
+    else if (hue < 180) { r = 0; g = c; b = x; }
+    else if (hue < 240) { r = 0; g = x; b = c; }
+    else if (hue < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    const R = Math.round((r + m) * 255);
+    const G = Math.round((g + m) * 255);
+    const B = Math.round((b + m) * 255);
+
+    // Create a minimal 64x64 PNG (uncompressed, using zlib)
+    const zlib = require('zlib');
+    const width = 64, height = 64;
+    
+    // Raw pixel data (RGBA) with filter byte per row
+    const rawData = Buffer.alloc((width * 4 + 1) * height);
+    for (let y = 0; y < height; y++) {
+      rawData[y * (width * 4 + 1)] = 0; // filter: none
+      for (let x = 0; x < width; x++) {
+        const offset = y * (width * 4 + 1) + 1 + x * 4;
+        // Simple circle shape
+        const cx = x - width / 2, cy = y - height / 2;
+        const dist = Math.sqrt(cx * cx + cy * cy);
+        if (dist < width / 2 - 2) {
+          rawData[offset] = R;
+          rawData[offset + 1] = G;
+          rawData[offset + 2] = B;
+          rawData[offset + 3] = 255;
+        } else {
+          rawData[offset + 3] = 0; // transparent
+        }
+      }
+    }
+
+    // Compress
+    const compressed = zlib.deflateSync(rawData);
+
+    // Build PNG file
+    function crc32(buf) {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) {
+        crc ^= buf[i];
+        for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+    function chunk(type, data) {
+      const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+      const typeB = Buffer.from(type);
+      const crcB = Buffer.alloc(4); crcB.writeUInt32BE(crc32(Buffer.concat([typeB, data])));
+      return Buffer.concat([len, typeB, data, crcB]);
+    }
+
+    const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
+    const iend = Buffer.alloc(0);
+
+    return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', compressed), chunk('IEND', iend)]);
+  } catch (e) {
+    console.warn('Icon generation failed:', e.message);
+    return null;
+  }
+}
+
 // ── Build Logic ───────────────────────────────────────
 function buildClient(data) {
   const {
@@ -235,6 +315,17 @@ function buildClient(data) {
     customIconUsed = tryConvertIcon(iconBase64, iconPath);
     if (customIconUsed) {
       console.log('  ✓ Custom icon applied');
+    }
+  } else {
+    // No icon provided — generate a simple colored icon with the logo letter
+    const generatedPng = generateSimpleIcon(letter, safeName);
+    if (generatedPng) {
+      fs.writeFileSync(path.join(clientDir, 'icon.png'), generatedPng);
+      fs.writeFileSync(iconPngPath, generatedPng);
+      const icoBuffer = pngToIco(generatedPng);
+      fs.writeFileSync(iconPath, icoBuffer);
+      customIconUsed = true;
+      console.log('  ✓ Auto-generated icon for ' + letter);
     }
   }
 
