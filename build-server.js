@@ -316,18 +316,8 @@ function buildClient(data) {
     if (customIconUsed) {
       console.log('  ✓ Custom icon applied');
     }
-  } else {
-    // No icon provided — generate a simple colored icon with the logo letter
-    const generatedPng = generateSimpleIcon(letter, safeName);
-    if (generatedPng) {
-      fs.writeFileSync(path.join(clientDir, 'icon.png'), generatedPng);
-      fs.writeFileSync(iconPngPath, generatedPng);
-      const icoBuffer = pngToIco(generatedPng);
-      fs.writeFileSync(iconPath, icoBuffer);
-      customIconUsed = true;
-      console.log('  ✓ Auto-generated icon for ' + letter);
-    }
   }
+  // If no icon uploaded → use the default Servio icon (already in assets/icon.ico)
 
   // Step 4: Update package.json
   const pkgOriginal = fs.readFileSync(PKG_JSON, 'utf8');
