@@ -148,7 +148,7 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
   const fixedHtml = htmlContent.replace('</head>', printCSS + '</head>');
 
   // Write to temp file — data: URLs cause blank prints in some Electron versions
-  const tmpFile = path.join(os.tmpdir(), 'dolphino_print_' + Date.now() + '.html');
+  const tmpFile = path.join(os.tmpdir(), 'servio_print_' + Date.now() + '.html');
   fs.writeFileSync(tmpFile, fixedHtml, 'utf8');
 
   const printWin = new BrowserWindow({

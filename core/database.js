@@ -201,7 +201,7 @@ async function initDatabase(userDataPath) {
   try {
     SQL = await initSqlEngine();
 
-    dbPath = path.join(userDataPath, 'dolphino-pos.sqlite');
+    dbPath = path.join(userDataPath, 'servio-pos.sqlite');
     if (fs.existsSync(dbPath)) {
       const fileBuffer = fs.readFileSync(dbPath);
       db = new SQL.Database(new Uint8Array(fileBuffer));

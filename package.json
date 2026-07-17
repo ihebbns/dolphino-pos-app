@@ -1,7 +1,7 @@
 {
-  "name": "dolphino-pos",
+  "name": "servio-pos",
   "version": "1.1.0",
-  "description": "Système de caisse POS — Multi-client (Servio OS)",
+  "description": "ServioOS — Système de caisse POS multi-client",
   "main": "core/main.js",
   "author": "Servio OS",
   "license": "MIT",
@@ -18,11 +18,12 @@
   },
   "devDependencies": {
     "electron": "^36.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "sharp": "^0.35.3"
   },
   "build": {
-    "appId": "tn.dolphino.pos",
-    "productName": "Dolphino POS",
+    "appId": "tn.servio.pos",
+    "productName": "Servio POS",
     "copyright": "© 2025 Servio OS",
     "directories": {
       "output": "dist"
@@ -60,11 +61,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Dolphino POS",
+      "shortcutName": "Servio POS",
       "runAfterFinish": true
     },
     "portable": {
-      "artifactName": "DolphinoPOS-portable.exe"
+      "artifactName": "ServioPOS-portable.exe"
     }
   }
 }
