@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>ServioOS — Client Builder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0A0704;--panel:#0F0C08;--card:#161210;--gold:#C8913A;--gold-l:#E8A84C;--txt:#F0E8D8;--muted:#7A6E5F;--div:#231C12;--green:#3DB87A;--red:#E05252;--blue:#4A90D9}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:14px}
+.header{background:var(--panel);border-bottom:1px solid var(--div);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.brand{font-size:20px;font-weight:700;color:var(--gold-l)}
+.brand span{font-size:12px;color:var(--muted);margin-left:8px;font-weight:400}
+.container{max-width:900px;margin:20px auto;padding:0 20px}
+.card{background:var(--panel);border:1px solid var(--div);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.card-hdr{background:var(--card);padding:12px 18px;border-bottom:1px solid var(--div);font-weight:700;font-size:14px;color:var(--gold-l);display:flex;align-items:center;justify-content:space-between}
+.card-body{padding:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{background:var(--card);border:1px solid var(--div);border-radius:7px;padding:10px 12px;color:var(--txt);font-size:13px;outline:none}
+.field input:focus,.field select:focus{border-color:var(--gold)}
+.field input::placeholder{color:var(--muted)}
+.full{grid-column:1/-1}
+.radio-group{display:flex;gap:10px;margin-top:4px}
+.radio-card{flex:1;padding:16px;border:2px solid var(--div);border-radius:10px;text-align:center;cursor:pointer;transition:all .15s}
+.radio-card:hover{border-color:var(--gold);opacity:.9}
+.radio-card.active{border-color:var(--gold);background:rgba(200,145,58,.08)}
+.radio-card .icon{font-size:28px;margin-bottom:4px}
+.radio-card .label{font-size:12px;font-weight:600;color:var(--gold-l)}
+.radio-card .desc{font-size:10px;color:var(--muted);margin-top:2px}
+.btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .12s}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-l));color:#080604}
+.btn-gold:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(200,145,58,.3)}
+.btn-gold:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-green{background:linear-gradient(135deg,var(--green),#2ea868);color:#fff}
+.btn-red{background:rgba(224,82,82,.15);border:1px solid rgba(224,82,82,.3);color:var(--red)}
+.btn-sm{padding:6px 12px;font-size:11px;border-radius:5px}
+.sep{border-top:1px solid var(--div);margin:16px 0}
+.cat-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.cat-tab{padding:6px 14px;border-radius:6px;font-size:12px;border:1px solid var(--div);color:var(--muted);cursor:pointer}
+.cat-tab:hover{border-color:var(--gold);color:var(--txt)}
+.cat-tab.on{border-color:var(--gold);background:rgba(200,145,58,.1);color:var(--gold-l)}
+.item-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--div)}
+.item-row:last-child{border-bottom:none}
+.item-emoji{font-size:18px;width:28px;text-align:center}
+.item-name{flex:1;font-size:13px}
+.item-price{width:70px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px 8px;color:var(--gold-l);font-size:13px;font-weight:700;text-align:right;outline:none}
+.item-del{color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:4px;font-size:14px}
+.item-del:hover{color:var(--red);background:rgba(224,82,82,.08)}
+.status{padding:14px 18px;border-radius:8px;margin-top:16px;font-size:13px;display:none}
+.status.show{display:block}
+.status-info{background:rgba(200,145,58,.08);border:1px solid rgba(200,145,58,.3);color:var(--gold-l)}
+.status-ok{background:rgba(61,184,122,.08);border:1px solid rgba(61,184,122,.3);color:var(--green)}
+.status-err{background:rgba(224,82,82,.08);border:1px solid rgba(224,82,82,.3);color:var(--red)}
+.result-box{background:var(--card);border:1px solid var(--green);border-radius:10px;padding:16px;margin-top:14px;display:none}
+.result-box.show{display:block}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--div);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.clients-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:12px}
+.client-card{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;font-size:12px}
+.client-card .name{font-weight:700;font-size:13px;margin-bottom:4px}
+.client-card .key{font-family:monospace;color:var(--gold);font-size:10px}
+.icon-preview{width:48px;height:48px;border-radius:10px;border:1px solid var(--div);object-fit:cover;display:none}
+.icon-preview.show{display:block}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="brand">⚡ ServioOS <span>Client Builder</span></div>
+  <div style="font-size:12px;color:var(--muted)" id="server-status">Connecting...</div>
+</div>
+
+<div class="container">
+  <!-- Existing clients -->
+  <div class="card">
+    <div class="card-hdr">📂 Clients existants <button class="btn btn-sm btn-gold" onclick="loadClients()">↻</button></div>
+    <div class="card-body"><div class="clients-list" id="clients-list">Chargement...</div></div>
+  </div>
+
+  <!-- Builder form -->
+  <div class="card">
+    <div class="card-hdr">⚡ Nouveau Client — Créer + Générer EXE</div>
+    <div class="card-body">
+
+      <!-- Business Type -->
+      <div class="field full" style="margin-bottom:16px">
+        <label>Type d'activité</label>
+        <div class="radio-group">
+          <div class="radio-card active" id="type-fastfood" onclick="setType('fastfood')">
+            <div class="icon">🍔</div><div class="label">Fast Food</div><div class="desc">Commande directe, emporter</div>
+          </div>
+          <div class="radio-card" id="type-cafe" onclick="setType('cafe')">
+            <div class="icon">☕</div><div class="label">Café / Restaurant</div><div class="desc">Service à table</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Identity -->
+      <div class="grid">
+        <div class="field"><label>Nom du restaurant *</label><input id="f-name" placeholder="Cafe Milano"></div>
+        <div class="field"><label>Ville</label><input id="f-city" placeholder="Sousse, Tunisie"></div>
+        <div class="field"><label>Logo emoji</label><input id="f-logo" placeholder="☕ ou 🍔" value="☕"></div>
+        <div class="field"><label>Lettre logo</label><input id="f-letter" placeholder="Auto" maxlength="1"></div>
+        <div class="field"><label>Slogan</label><input id="f-tagline" placeholder="Auto"></div>
+        <div class="field"><label>Téléphone</label><input id="f-phone" placeholder="+216 XX XXX XXX"></div>
+        <div class="field"><label>Devise</label><input id="f-currency" value="DT"></div>
+        <div class="field">
+          <label>Icône EXE (PNG)</label>
+          <input type="file" id="f-icon" accept="image/png,image/jpeg" onchange="previewIcon(this)" style="font-size:11px">
+          <img class="icon-preview" id="icon-preview">
+        </div>
+      </div>
+
+      <!-- Cafe specific -->
+      <div id="cafe-fields" style="display:none">
+        <div class="sep"></div>
+        <div class="grid">
+          <div class="field"><label>Nombre de tables</label><input id="f-tables" type="number" value="12"></div>
+          <div class="field"><label>Impression tickets</label>
+            <select id="f-print"><option value="true">Activée</option><option value="false">Désactivée</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Dashboard credentials -->
+      <div class="grid">
+        <div class="field"><label>Email propriétaire (dashboard) *</label><input id="f-email" type="email" placeholder="owner@restaurant.tn"></div>
+        <div class="field"><label>Mot de passe dashboard *</label><input id="f-password" placeholder="••••••••"></div>
+        <div class="field">
+          <label>Clé API * <button class="btn btn-sm btn-gold" onclick="genKey()" style="margin-left:6px">Générer</button></label>
+          <input id="f-apikey" placeholder="SRVO-XXXX-0000">
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- PINs -->
+      <div class="grid">
+        <div class="field"><label>Nom Manager</label><input id="f-mgr-name" value="Manager"></div>
+        <div class="field"><label>PIN Manager (4 chiffres)</label><input id="f-mgr-pin" value="1234" maxlength="4"></div>
+        <div class="field"><label>Nom Caissier</label><input id="f-cash-name" value="Caissier"></div>
+        <div class="field"><label>PIN Caissier (4 chiffres)</label><input id="f-cash-pin" value="0000" maxlength="4"></div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Menu -->
+      <div class="field full">
+        <label>Menu — Catégories & Articles <span style="color:var(--muted);font-size:10px">(vide = menu par défaut)</span></label>
+      </div>
+      <div style="margin-top:8px">
+        <div class="cat-tabs" id="cat-tabs"></div>
+        <div style="display:flex;gap:6px;margin-bottom:12px">
+          <input id="new-cat-icon" placeholder="🍕" style="width:40px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:14px;text-align:center;outline:none">
+          <input id="new-cat-name" placeholder="Nouvelle catégorie..." style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none" onkeydown="if(event.key==='Enter')addCat()">
+          <button class="btn btn-sm btn-gold" onclick="addCat()">+ Catégorie</button>
+        </div>
+        <div id="items-list"></div>
+        <div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--div)">
+          <input id="new-item-emoji" placeholder="🍕" style="width:40px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);text-align:center;outline:none">
+          <input id="new-item-name" placeholder="Nom article" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+          <input id="new-item-price" type="number" step="0.5" placeholder="Prix" style="width:70px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);outline:none">
+          <button class="btn btn-sm btn-gold" onclick="addItem()">+ Article</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Build button -->
+      <button class="btn btn-gold" style="width:100%;padding:16px;font-size:16px" id="btn-build" onclick="buildClient()">
+        ⚡ Créer le client + Générer EXE
+      </button>
+
+      <div class="status" id="status"></div>
+      <div class="result-box" id="result"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:4500';
+const VERCEL_API = 'https://dolphino-saas.vercel.app';
+const ADMIN_KEY = 'dolphino-admin-iheb-2026';
+
+let businessType = 'fastfood';
+let menu = {};
+let selectedCat = '';
+let iconBase64 = '';
+
+// ── Init ──
+loadClients();
+checkServer();
+
+async function checkServer() {
+  try {
+    const r = await fetch(API + '/status');
+    const d = await r.json();
+    document.getElementById('server-status').innerHTML = '🟢 Serveur OK' + (d.building ? ' (build en cours...)' : '');
+  } catch(e) {
+    document.getElementById('server-status').innerHTML = '🔴 Serveur offline';
+  }
+}
+
+async function loadClients() {
+  try {
+    const r = await fetch(API + '/clients');
+    const d = await r.json();
+    const el = document.getElementById('clients-list');
+    if (!d.clients || d.clients.length === 0) { el.innerHTML = '<div style="color:var(--muted)">Aucun client</div>'; return; }
+    el.innerHTML = d.clients.map(c => `<div class="client-card"><div class="name">${c}</div></div>`).join('');
+  } catch(e) { document.getElementById('clients-list').innerHTML = '<div style="color:var(--red)">Erreur connexion</div>'; }
+}
+
+// ── Business type ──
+function setType(t) {
+  businessType = t;
+  document.getElementById('type-fastfood').className = 'radio-card' + (t==='fastfood'?' active':'');
+  document.getElementById('type-cafe').className = 'radio-card' + (t==='cafe'?' active':'');
+  document.getElementById('cafe-fields').style.display = t==='cafe' ? 'block' : 'none';
+  if (t==='cafe' && !document.getElementById('f-logo').value) document.getElementById('f-logo').value = '☕';
+  if (t==='fastfood' && document.getElementById('f-logo').value === '☕') document.getElementById('f-logo').value = '🍔';
+}
+
+// ── API key ──
+function genKey() {
+  const id = Math.random().toString(36).slice(2,6).toUpperCase();
+  document.getElementById('f-apikey').value = 'SRVO-' + id + '-' + Date.now().toString().slice(-4);
+}
+
+// ── Icon ──
+function previewIcon(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    iconBase64 = reader.result;
+    const img = document.getElementById('icon-preview');
+    img.src = reader.result;
+    img.className = 'icon-preview show';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Menu management ──
+function renderCatTabs() {
+  const cats = Object.keys(menu);
+  document.getElementById('cat-tabs').innerHTML = cats.map(c =>
+    `<div class="cat-tab${c===selectedCat?' on':''}" onclick="selectCat('${c}')">${menu[c].icon} ${c} <span style="cursor:pointer;margin-left:4px;color:var(--red)" onclick="event.stopPropagation();deleteCat('${c}')">✕</span></div>`
+  ).join('');
+  renderItems();
+}
+
+function selectCat(c) { selectedCat = c; renderCatTabs(); }
+
+function addCat() {
+  const name = document.getElementById('new-cat-name').value.trim();
+  const icon = document.getElementById('new-cat-icon').value.trim() || '🍽️';
+  if (!name) return;
+  if (menu[name]) { alert('Existe déjà'); return; }
+  menu[name] = { icon, items: [] };
+  selectedCat = name;
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-icon').value = '';
+  renderCatTabs();
+}
+
+function deleteCat(c) {
+  if (!confirm('Supprimer "' + c + '" et tous ses articles ?')) return;
+  delete menu[c];
+  const cats = Object.keys(menu);
+  selectedCat = cats[0] || '';
+  renderCatTabs();
+}
+
+function renderItems() {
+  const el = document.getElementById('items-list');
+  if (!selectedCat || !menu[selectedCat]) { el.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">Sélectionnez ou créez une catégorie</div>'; return; }
+  const items = menu[selectedCat].items;
+  if (items.length === 0) { el.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">Aucun article — ajoutez-en ci-dessous</div>'; return; }
+  el.innerHTML = items.map((it, i) => `
+    <div class="item-row">
+      <span class="item-emoji">${it.e}</span>
+      <span class="item-name">${it.name}</span>
+      <input class="item-price" type="number" step="0.5" value="${it.p}" onchange="updatePrice(${i}, this.value)">
+      <span class="item-del" onclick="deleteItem(${i})">✕</span>
+    </div>
+  `).join('');
+}
+
+function addItem() {
+  if (!selectedCat) { alert('Créez d\'abord une catégorie'); return; }
+  const emoji = document.getElementById('new-item-emoji').value.trim() || '🍽️';
+  const name = document.getElementById('new-item-name').value.trim();
+  const price = parseFloat(document.getElementById('new-item-price').value) || 0;
+  if (!name) return;
+  const id = selectedCat.slice(0,2).toLowerCase() + (menu[selectedCat].items.length + 1);
+  menu[selectedCat].items.push({ id, name, e: emoji, p: price });
+  document.getElementById('new-item-name').value = '';
+  document.getElementById('new-item-emoji').value = '';
+  document.getElementById('new-item-price').value = '';
+  renderItems();
+}
+
+function deleteItem(i) { menu[selectedCat].items.splice(i, 1); renderItems(); }
+function updatePrice(i, v) { menu[selectedCat].items[i].p = parseFloat(v) || 0; }
+
+renderCatTabs();
+
+// ── BUILD ──
+async function buildClient() {
+  const name = document.getElementById('f-name').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const password = document.getElementById('f-password').value.trim();
+  const apiKey = document.getElementById('f-apikey').value.trim();
+
+  if (!name) { showStatus('Nom du restaurant requis', 'err'); return; }
+  if (!email) { showStatus('Email requis', 'err'); return; }
+  if (!password) { showStatus('Mot de passe requis', 'err'); return; }
+  if (!apiKey) { showStatus('Clé API requise — cliquez Générer', 'err'); return; }
+
+  const btn = document.getElementById('btn-build');
+  btn.disabled = true;
+
+  // Step 1: Create in DB
+  showStatus('<span class="spinner"></span> Création du client dans la base de données...', 'info');
+  try {
+    const r = await fetch(VERCEL_API + '/api/admin/clients', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_key: ADMIN_KEY,
+        name, email, password, api_key: apiKey,
+        city: document.getElementById('f-city').value.trim(),
+        phone: document.getElementById('f-phone').value.trim()
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) { showStatus('❌ Erreur DB: ' + d.error, 'err'); btn.disabled = false; return; }
+  } catch(e) { showStatus('❌ Impossible de joindre le serveur: ' + e.message, 'err'); btn.disabled = false; return; }
+
+  // Step 2: Save config to DB
+  showStatus('<span class="spinner"></span> Sauvegarde de la configuration...', 'info');
+  try {
+    const config = {
+      logo: document.getElementById('f-logo').value.trim(),
+      logoLetter: document.getElementById('f-letter').value.trim() || name.charAt(0).toUpperCase(),
+      tagline: document.getElementById('f-tagline').value.trim() || name + ' — POS Pro',
+      currency: document.getElementById('f-currency').value.trim(),
+      managerName: document.getElementById('f-mgr-name').value.trim(),
+      managerPin: document.getElementById('f-mgr-pin').value.trim(),
+      cashierName: document.getElementById('f-cash-name').value.trim(),
+      cashierPin: document.getElementById('f-cash-pin').value.trim(),
+    };
+    await fetch(VERCEL_API + '/api/admin/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_key: ADMIN_KEY, api_key: apiKey, config, menu: Object.keys(menu).length > 0 ? menu : undefined, name, city: document.getElementById('f-city').value.trim(), phone: document.getElementById('f-phone').value.trim() })
+    });
+  } catch(e) { /* non-blocking */ }
+
+  // Step 3: Build EXE
+  showStatus('<span class="spinner"></span> 🔨 Construction de l\'EXE... (~2-3 minutes)', 'info');
+  try {
+    const buildData = {
+      name,
+      city: document.getElementById('f-city').value.trim(),
+      logo: document.getElementById('f-logo').value.trim() || '🍽️',
+      logoLetter: document.getElementById('f-letter').value.trim() || name.charAt(0).toUpperCase(),
+      tagline: document.getElementById('f-tagline').value.trim() || name + ' — POS Pro',
+      phone: document.getElementById('f-phone').value.trim(),
+      currency: document.getElementById('f-currency').value.trim() || 'DT',
+      syncKey: apiKey,
+      managerName: document.getElementById('f-mgr-name').value.trim(),
+      managerPin: document.getElementById('f-mgr-pin').value.trim(),
+      cashierName: document.getElementById('f-cash-name').value.trim(),
+      cashierPin: document.getElementById('f-cash-pin').value.trim(),
+      businessType,
+      tableCount: parseInt(document.getElementById('f-tables').value) || 12,
+      printEnabled: document.getElementById('f-print').value === 'true',
+      menu: Object.keys(menu).length > 0 ? menu : undefined,
+      iconBase64: iconBase64 || undefined,
+    };
+    const r = await fetch(API + '/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildData)
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showStatus('✅ Client créé + EXE construit avec succès!', 'ok');
+      showResult(name, apiKey, email, password, d);
+      loadClients();
+    } else {
+      showStatus('❌ Erreur build: ' + d.error, 'err');
+    }
+  } catch(e) {
+    showStatus('❌ Build server erreur: ' + e.message, 'err');
+  }
+  btn.disabled = false;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.innerHTML = msg;
+  el.className = 'status show status-' + type;
+}
+
+function showResult(name, apiKey, email, password, buildData) {
+  const el = document.getElementById('result');
+  el.className = 'result-box show';
+  el.innerHTML = `
+    <div style="font-weight:700;color:var(--green);margin-bottom:10px">✅ CLIENT PRÊT</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px">
+      <span style="color:var(--muted)">Restaurant:</span><span>${name}</span>
+      <span style="color:var(--muted)">Clé API:</span><span style="font-family:monospace;color:var(--gold)">${apiKey}</span>
+      <span style="color:var(--muted)">Dashboard:</span><span>${email} / ${password}</span>
+      <span style="color:var(--muted)">EXE:</span><span style="word-break:break-all">${buildData.exePath || 'dist_clients/' + buildData.safeName + '/'}</span>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

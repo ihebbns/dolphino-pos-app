@@ -383,6 +383,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET / — Serve builder UI
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    const uiPath = path.join(POS_DIR, 'builder-ui.html');
+    if (fs.existsSync(uiPath)) {
+      cors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(uiPath, 'utf8'));
+      return;
+    }
+  }
+
   // GET /status
   if (req.method === 'GET' && req.url === '/status') {
     return jsonResponse(res, 200, { building, lastBuild, queueLength: buildQueue.length });
@@ -435,7 +446,9 @@ server.listen(PORT, () => {
   console.log(`║  ⚡ SERVIO OS — Build Server               ║`);
   console.log(`║  🌐 http://localhost:${PORT}                  ║`);
   console.log(`╚════════════════════════════════════════════╝\n`);
+  console.log(`  → Ouvrir http://localhost:${PORT} dans votre navigateur\n`);
   console.log(`Endpoints:`);
+  console.log(`  GET  /        — Interface graphique (Builder UI)`);
   console.log(`  POST /build   — Build a client EXE`);
   console.log(`  GET  /status  — Check build status`);
   console.log(`  GET  /clients — List existing clients\n`);
