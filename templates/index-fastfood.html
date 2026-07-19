@@ -1956,11 +1956,20 @@ function setDrinkStock(id){
 function cloturerJournee(){
   if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
 
-  const total = hist.reduce((a,h)=>a+h.g,0);
-  const count = hist.length;
-  const cash  = hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
-  const card  = hist.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
-  const mob   = hist.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
+  // Only count sales from THIS session (not previous sessions already clôturé)
+  // Filter by time: only sales made after session was opened
+  const sessionOpenTime = currentSession?.openedAt || '00:00';
+  const sessionSales = hist.filter(h => {
+    // Compare sale time vs session open time
+    if (!h.time || !sessionOpenTime) return true;
+    return h.time >= sessionOpenTime;
+  });
+
+  const total = sessionSales.reduce((a,h)=>a+h.g,0);
+  const count = sessionSales.length;
+  const cash  = sessionSales.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const card  = sessionSales.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
+  const mob   = sessionSales.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
   const fond  = currentSession?.fondInitial || 0;
   const theorique = fond + cash; // cash + fond initial = what should be in drawer
   const now   = new Date();
