@@ -1428,15 +1428,15 @@ async function loginSuccess(role){
   document.getElementById('s-av').style.background=u.bg;
   document.getElementById('s-av').style.color=u.color;
   document.getElementById('s-name').textContent=u.name;
+  // Caissier can open/close caisse; only manager sees menu, dashboard, PINs
+  document.getElementById('btn-cloturer').style.display='';
   if(u.isManager){
     document.getElementById('btn-dash').style.display='';
     document.getElementById('btn-menu-manage').style.display='';
-    document.getElementById('btn-cloturer').style.display='';
     document.getElementById('btn-pins').style.display='';
   }else{
     document.getElementById('btn-dash').style.display='none';
     document.getElementById('btn-menu-manage').style.display='none';
-    document.getElementById('btn-cloturer').style.display='none';
     document.getElementById('btn-pins').style.display='none';
   }
   // Reset session badge
@@ -1977,7 +1977,6 @@ function setDrinkStock(id){
 }
 
 function cloturerJournee(){
-  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
 
   // Only count sales from THIS session (not previous sessions already clôturé)
   // Filter by time: only sales made after session was opened
@@ -2066,7 +2065,7 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
     cashTotal: cash, cardTotal: card, mobileTotal: mob,
     fondInitial: currentSession?.fondInitial || 0,
     montantCompte, theorique, ecart,
-    cashier: USERS[currentUser].name,
+    cashier: currentSession?.cashier || USERS[currentUser].name,
   });
 
   // Close modal — caisse is now closed.
