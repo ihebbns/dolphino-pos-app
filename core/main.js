@@ -124,7 +124,7 @@ function createWindow() {
     height: 860,
     minWidth: 1100,
     minHeight: 700,
-    title: 'POS — Caisse',
+    title: 'POS Pro — by Servio ⚡',
     backgroundColor: '#0A0704',
     webPreferences: {
       nodeIntegration: false,
@@ -148,7 +148,7 @@ function createWindow() {
 
   const template = [
     {
-      label: '⚡ POS',
+      label: '⚡ Servio',
       submenu: [
         { label: 'À propos', click: () => {
           dialog.showMessageBox(mainWindow, {
