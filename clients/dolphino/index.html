@@ -2266,8 +2266,13 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
+  // Don't add ripple on inputs/textareas to avoid focus issues
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
   const t=e.target.closest('.pc,.hdr-btn,.enc,.pin-btn,.user-card,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
   if(!t)return;
+  // Limit active ripples to prevent memory issues
+  const existing = t.querySelectorAll('.ripple-el');
+  if(existing.length > 2) return;
   const rect=t.getBoundingClientRect();
   const size=Math.max(rect.width,rect.height);
   const r=document.createElement('span');
@@ -2275,10 +2280,17 @@ document.addEventListener('pointerdown',function(e){
   r.style.width=r.style.height=size+'px';
   r.style.left=(e.clientX-rect.left-size/2)+'px';
   r.style.top=(e.clientY-rect.top-size/2)+'px';
-  const prevPos=getComputedStyle(t).position;
-  if(prevPos==='static')t.style.position='relative';
   t.appendChild(r);
-  setTimeout(()=>r.remove(),600);
+  setTimeout(()=>{try{r.remove();}catch(e){}},600);
+});
+
+// ═══════════════ FOCUS FIX (prevents keyboard from being blocked) ═══════════════
+// Electron sometimes loses focus on inputs after many DOM operations.
+// This ensures clicking on an input always gives it focus.
+document.addEventListener('click', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+    e.target.focus();
+  }
 });
 </script>
 </body>
