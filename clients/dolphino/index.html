@@ -560,7 +560,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 const CLIENT_CONFIG = {
   // ── Identity ──────────────────────────────────────────
   name:        'DOLPHINO',              // Restaurant name (uppercase)
-  tagline:     'Dolphino — POS Pro',
+  tagline:     'Restaurant & Fast Food',
   logo:        '🐬',                    // Emoji logo on login screen
   logoLetter:  'D',                     // Letter in header circle
   city:        'Kelibia, Tunisie',      // City shown on receipts
@@ -2043,14 +2043,13 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   saveSessionToStorage();
   document.getElementById('session-badge-hdr').style.display = 'none';
 
-  // Reset today's running totals + ticket counter for next session
+  // Reset daily totals for this session, but KEEP orderNum
+  // Ticket number only resets at 5 AM (business day change), NOT at clôture
   hist = [];
   daily = 0;
-  orderNum = 1;
+  // orderNum stays — next session same day continues numbering
   localStorage.removeItem(STORE_KEY);
   document.getElementById('dt').textContent = 'Ventes du jour : 0.000 DT';
-  const onum = document.getElementById('onum');
-  if (onum) onum.textContent = '#001';
   businessStateReady = null;
 
   // Update button: now shows "💰 Ouvrir la caisse"
