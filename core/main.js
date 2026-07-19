@@ -16,20 +16,106 @@ const {
 
 let mainWindow;
 
+// ── OTA Auto-Update ───────────────────────────────────────────────────
+// Downloads latest index.html from server silently in background.
+// Fallback: always uses local version if download fails.
+const UPDATE_DIR = path.join(app.getPath('userData'), 'servio-update');
+const UPDATE_FILE = path.join(UPDATE_DIR, 'index.html');
+const UPDATE_META = path.join(UPDATE_DIR, 'meta.json');
+
+function getLocalVersion() {
+  try {
+    if (fs.existsSync(UPDATE_META)) {
+      return JSON.parse(fs.readFileSync(UPDATE_META, 'utf8')).version || 0;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function getUpdatedIndex() {
+  // Return the updated index.html if it exists and is valid (> 1KB)
+  try {
+    if (fs.existsSync(UPDATE_FILE)) {
+      const stat = fs.statSync(UPDATE_FILE);
+      if (stat.size > 1024) return UPDATE_FILE;
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function checkForUpdate(syncUrl, syncKey) {
+  if (!syncUrl || !syncKey) return;
+  try {
+    const checkUrl = syncUrl.replace('/api/sync', '/api/update') + '?key=' + syncKey;
+    const https = require('https');
+    const http = require('http');
+    const fetch = (checkUrl.startsWith('https') ? https : http).get;
+
+    // Check version
+    const versionData = await new Promise((resolve, reject) => {
+      const req = (checkUrl.startsWith('https') ? https : http).get(checkUrl, { timeout: 8000 }, (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+
+    if (!versionData || !versionData.ok || !versionData.version) return;
+
+    const localVer = getLocalVersion();
+    const serverVer = parseInt(versionData.version) || 0;
+
+    if (serverVer <= localVer) return; // Already up to date
+
+    // Download new HTML
+    const htmlUrl = syncUrl.replace('/api/sync', '/api/update/html') + '?key=' + syncKey;
+    const html = await new Promise((resolve, reject) => {
+      const req = (htmlUrl.startsWith('https') ? https : http).get(htmlUrl, { timeout: 15000 }, (res) => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+
+    if (!html || html.length < 1024) return; // Invalid or empty
+
+    // Save update
+    if (!fs.existsSync(UPDATE_DIR)) fs.mkdirSync(UPDATE_DIR, { recursive: true });
+    fs.writeFileSync(UPDATE_FILE, html, 'utf8');
+    fs.writeFileSync(UPDATE_META, JSON.stringify({ version: serverVer, updatedAt: new Date().toISOString() }), 'utf8');
+    console.log('[OTA] Updated to version', serverVer);
+
+    // Notify user — they'll get the update on next restart
+    if (mainWindow) {
+      mainWindow.webContents.executeJavaScript(`
+        if(typeof flash==='function') flash('🔄 Mise à jour disponible — redémarrez l\\'app');
+      `).catch(() => {});
+    }
+  } catch (e) {
+    console.log('[OTA] Check failed (offline?):', e.message);
+    // Silent fail — app continues normally
+  }
+}
+
 // ── Resolve client index.html ─────────────────────────────────────────
 function resolveClientIndex() {
-  // In packaged app (asar): index.html is one level up from core/
-  // Structure: app.asar/core/main.js + app.asar/index.html
-  const upOne = path.join(__dirname, '..', 'index.html');
-  
-  // Dev mode: check CLIENT_DIR env variable first
+  // Priority 1: OTA updated version (if valid)
+  const updated = getUpdatedIndex();
+  if (updated) return updated;
+
+  // Priority 2: Dev mode (CLIENT_DIR env)
   if (process.env.CLIENT_DIR) {
     const envPath = path.resolve(process.env.CLIENT_DIR, 'index.html');
     if (fs.existsSync(envPath)) return envPath;
   }
 
-  // Always return the expected packaged path (fs.existsSync unreliable in asar)
-  return upOne;
+  // Priority 3: Original from EXE package (always works)
+  return path.join(__dirname, '..', 'index.html');
 }
 
 function createWindow() {
@@ -261,6 +347,22 @@ ipcMain.handle('db-get-sessions', async () => {
 app.whenReady().then(() => {
   getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
   createWindow();
+
+  // OTA: check for updates 10 seconds after startup (non-blocking)
+  setTimeout(() => {
+    // Read syncUrl and syncKey from the loaded index.html
+    try {
+      const indexPath = resolveClientIndex();
+      const indexContent = fs.readFileSync(indexPath, 'utf8');
+      const syncUrlMatch = indexContent.match(/syncUrl:\s*'([^']+)'/);
+      const syncKeyMatch = indexContent.match(/syncKey:\s*'([^']+)'/);
+      if (syncUrlMatch && syncKeyMatch) {
+        checkForUpdate(syncUrlMatch[1], syncKeyMatch[1]);
+      }
+    } catch (e) {
+      console.log('[OTA] Could not read config:', e.message);
+    }
+  }, 10000);
 });
 
 app.on('window-all-closed', () => {
