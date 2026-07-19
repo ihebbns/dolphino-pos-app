@@ -1809,7 +1809,8 @@ function showReceipt(od){
     <div class="rr"><span>Paiement</span><span>${pm[od.payMode]}</span></div>
     ${od.payMode==='cash'?`<div class="rr"><span>Reçu</span><span>${f(od.r)} DT</span></div><div class="rr"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
     <div class="rdiv"></div>
-    <div class="rc" style="font-size:10px;color:var(--muted)">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez Dolphino 🐬</div>`;
+    <div class="rc" style="font-size:10px;color:var(--muted)">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez ${CLIENT_CONFIG.name}</div>
+    <div class="rc" style="font-size:8px;color:var(--muted);margin-top:4px">by servio.tn ⚡</div>`;
   document.getElementById('rm').style.display='flex';
 }
 
@@ -1846,7 +1847,8 @@ function doPrint(){
   <div class="r"><span>Paiement</span><span>${pm[od.payMode]}</span></div>
   ${od.payMode==='cash'?`<div class="r"><span>Reçu</span><span>${f(od.r)} DT</span></div><div class="r"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
   <div class="d"></div>
-  <div class="c sm">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez Dolphino</div>
+  <div class="c sm">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez ${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:8px;margin-top:3px">by servio.tn ⚡</div>
   </body></html>`;
   if(window.electronAPI?.printReceipt){
     window.electronAPI.printReceipt(html);

@@ -1124,7 +1124,7 @@ function printReceipt(t, sale) {
   <div class="r" style="font-size:10px"><span>Paiement</span><span>${sale.payMode==='cash'?'Espèces':sale.payMode==='card'?'Carte':'Mobile'}</span></div>
   <div class="div"></div>
   <div class="c" style="font-size:9px;margin-top:3px">Merci de votre visite!</div>
-  <div class="c" style="font-size:8px">Powered by Servio OS</div>
+  <div class="c" style="font-size:8px">by servio.tn ⚡</div>
   </body></html>`;
   window.electronAPI.printReceipt(html);
 }
