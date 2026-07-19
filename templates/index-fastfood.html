@@ -1675,7 +1675,8 @@ function encaisser(){
     businessDate,
     type:orderType,cliName:document.getElementById('cli-name')?.value||'',
     cliTel:document.getElementById('cli-tel')?.value||'',
-    cashier:USERS[currentUser].name};
+    cashier:USERS[currentUser].name,
+    sessionId:currentSession?.id||null};
   if(window.electronAPI?.saveSale){
     try{
       const saved = await window.electronAPI.saveSale(od);
