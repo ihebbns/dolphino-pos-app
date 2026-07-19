@@ -2299,7 +2299,10 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
-  const t=e.target.closest('.pc,.hdr-btn,.enc,.pin-btn,.user-card,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
+  // Skip ripple on login screen elements (causes position bugs) and near inputs
+  if(e.target.closest('#login-screen')) return;
+  if(e.target.closest('input,textarea,select')) return;
+  const t=e.target.closest('.pc,.hdr-btn,.enc,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
   if(!t)return;
   const rect=t.getBoundingClientRect();
   const size=Math.max(rect.width,rect.height);
@@ -2308,8 +2311,6 @@ document.addEventListener('pointerdown',function(e){
   r.style.width=r.style.height=size+'px';
   r.style.left=(e.clientX-rect.left-size/2)+'px';
   r.style.top=(e.clientY-rect.top-size/2)+'px';
-  const prevPos=getComputedStyle(t).position;
-  if(prevPos==='static')t.style.position='relative';
   t.appendChild(r);
   setTimeout(()=>r.remove(),600);
 });
