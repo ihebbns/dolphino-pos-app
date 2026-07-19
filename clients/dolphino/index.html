@@ -374,7 +374,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-menu-manage" onclick="showMenuManage()" style="display:none">🛠️ Gérer le menu</button>
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
-    <button class="hdr-btn" id="btn-pins" onclick="showPinManager()" style="display:none">🔑 PINs</button>
+    <button class="hdr-btn" id="btn-pins" onclick="showUserManager()" style="display:none">👥 Utilisateurs</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
@@ -888,18 +888,12 @@ function getSessionBox() {
   return document.getElementById('session-box-content');
 }
 async function showOpenCaisseModal(){
-  // Pre-fill caissier name from logged-in user
-  const caissierDefault = currentUser ? USERS[currentUser].name : '';
+  const caissierName = currentUser ? USERS[currentUser].name : 'Caissier';
   createSessionModal(`
     <div class="session-icon">💰</div>
     <div class="session-title">Ouverture de Caisse</div>
-    <div class="session-sub">Saisissez le nom du caissier et le fond de caisse initial.</div>
+    <div class="session-sub">Caissier: <strong>${caissierName}</strong></div>
     <div class="session-input-row">
-      <label>Nom du caissier</label>
-      <input class="session-inp" type="text" id="caissier-inp" placeholder="Nom caissier"
-        value="${caissierDefault}" autocomplete="off" onfocus="this.select()" style="font-size:15px">
-    </div>
-    <div class="session-input-row" style="margin-top:10px">
       <label>Fond de caisse initial (DT)</label>
       <input class="session-inp" type="number" id="fond-inp" placeholder="0.000"
         step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
@@ -911,7 +905,7 @@ async function showOpenCaisseModal(){
 
 async function confirmOpenCaisse(){
   const fondVal      = parseFloat(document.getElementById('fond-inp')?.value) || 0;
-  const caissierName = (document.getElementById('caissier-inp')?.value || '').trim() || USERS[currentUser]?.name || 'Caissier';
+  const caissierName = USERS[currentUser]?.name || 'Caissier';
   const now = new Date();
   const sessionData = {
     businessDate: todayKey(),
@@ -1428,15 +1422,15 @@ async function loginSuccess(role){
   document.getElementById('s-av').style.background=u.bg;
   document.getElementById('s-av').style.color=u.color;
   document.getElementById('s-name').textContent=u.name;
-  // Caissier can open/close caisse; only manager sees menu, dashboard, PINs
-  document.getElementById('btn-cloturer').style.display='';
   if(u.isManager){
     document.getElementById('btn-dash').style.display='';
     document.getElementById('btn-menu-manage').style.display='';
+    document.getElementById('btn-cloturer').style.display='';
     document.getElementById('btn-pins').style.display='';
   }else{
     document.getElementById('btn-dash').style.display='none';
     document.getElementById('btn-menu-manage').style.display='none';
+    document.getElementById('btn-cloturer').style.display='none';
     document.getElementById('btn-pins').style.display='none';
   }
   // Reset session badge
@@ -1977,6 +1971,7 @@ function setDrinkStock(id){
 }
 
 function cloturerJournee(){
+  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
 
   // Only count sales from THIS session (not previous sessions already clôturé)
   // Filter by time: only sales made after session was opened
@@ -2065,7 +2060,7 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
     cashTotal: cash, cardTotal: card, mobileTotal: mob,
     fondInitial: currentSession?.fondInitial || 0,
     montantCompte, theorique, ecart,
-    cashier: currentSession?.cashier || USERS[currentUser].name,
+    cashier: USERS[currentUser].name,
   });
 
   // Close modal — caisse is now closed.
@@ -2093,81 +2088,118 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   flash('🔒 Caisse clôturée — ' + ecartMsg);
 }
 
-// ═══════════════ PIN MANAGER ═══════════════
-const PIN_KEY = 'dolphino-pins-v1';
+// ═══════════════ USER MANAGEMENT (replaces PIN Manager) ═══════════════
+const USERS_KEY = 'servio-users-v1';
 
-function loadPins(){
+function loadUsersFromStorage(){
   try{
-    const raw = localStorage.getItem(PIN_KEY);
-    if(raw) return JSON.parse(raw);
+    const raw = localStorage.getItem(USERS_KEY);
+    if(raw) {
+      const saved = JSON.parse(raw);
+      if(saved && typeof saved === 'object' && Object.keys(saved).length) return saved;
+    }
   }catch(e){}
-  // Default PINs from config
-  return { manager: CLIENT_CONFIG.managerPin, caissier: CLIENT_CONFIG.cashierPin };
+  return null;
 }
 
-function savePins(pins){
-  localStorage.setItem(PIN_KEY, JSON.stringify(pins));
-  // Update live USERS object
-  USERS.manager.pin  = pins.manager;
-  USERS.caissier.pin = pins.caissier;
+function saveUsersToStorage(){
+  localStorage.setItem(USERS_KEY, JSON.stringify(USERS));
 }
 
-function initPins(){
-  const pins = loadPins();
-  USERS.manager.pin  = pins.manager;
-  USERS.caissier.pin = pins.caissier;
+function initUsers(){
+  const saved = loadUsersFromStorage();
+  if(saved){
+    // Restore saved users (overrides CLIENT_CONFIG defaults)
+    Object.keys(saved).forEach(k => { USERS[k] = saved[k]; });
+    // Remove users that were deleted
+    Object.keys(USERS).forEach(k => { if(!saved[k]) delete USERS[k]; });
+  }
+}
+initUsers();
+
+function showUserManager(){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
+  renderUserManager();
 }
 
-function showPinManager(){
-  if(!USERS[currentUser].isManager){ alert('Accès réservé au Manager.'); return; }
-  const pins = loadPins();
+function renderUserManager(){
+  const userList = Object.entries(USERS).map(([id, u]) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--div);">
+      <div style="width:36px;height:36px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${u.name.charAt(0)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${u.name}</div>
+        <div style="font-size:10px;color:var(--muted);">${u.role} · PIN: ${u.pin}</div>
+      </div>
+      <button onclick="editUser('${id}')" style="padding:4px 10px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);cursor:pointer;font-size:11px;">✏️</button>
+      ${id !== 'manager' ? `<button onclick="deleteUser('${id}')" style="padding:4px 10px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);cursor:pointer;font-size:11px;">✕</button>` : ''}
+    </div>
+  `).join('');
+
   createSessionModal(`
-    <div class="session-icon">🔑</div>
-    <div class="session-title">Gestion des PINs</div>
-    <div class="session-sub">Modifiez les codes PIN. Min. 4 chiffres.</div>
-
-    <div class="session-input-row">
-      <label>PIN Manager (actuel: ••••)</label>
-      <input class="session-inp" type="password" id="pin-mgr-new"
-        placeholder="Nouveau PIN manager" inputmode="numeric"
-        maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px">
+    <div class="session-icon">👥</div>
+    <div class="session-title">Gestion des Utilisateurs</div>
+    <div style="max-height:250px;overflow-y:auto;margin-bottom:14px;">
+      ${userList}
     </div>
-    <div class="session-input-row" style="margin-top:10px">
-      <label>PIN Caissier (actuel: ••••)</label>
-      <input class="session-inp" type="password" id="pin-csr-new"
-        placeholder="Nouveau PIN caissier" inputmode="numeric"
-        maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px">
+    <div style="border-top:1px solid var(--div);padding-top:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;">AJOUTER UN UTILISATEUR</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="new-user-name" placeholder="Nom" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;" autocomplete="off">
+        <input id="new-user-pin" placeholder="PIN (4 chiffres)" maxlength="6" inputmode="numeric" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;text-align:center;" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <select id="new-user-role" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;">
+          <option value="Caissier">Caissier</option>
+          <option value="Serveur">Serveur</option>
+          <option value="Manager">Manager</option>
+        </select>
+        <button onclick="addUser()" style="padding:8px 16px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#080604;font-size:12px;font-weight:700;cursor:pointer;">+ Ajouter</button>
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin:8px 0 14px;padding:8px;background:var(--card);border-radius:6px;">
-      💡 Laissez vide pour ne pas modifier. Min. 4 chiffres, max. 6.
-    </div>
-    <button class="btn-session-open" onclick="savePinManager()">✓ Enregistrer les PINs</button>
-    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Annuler</button>
+    <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
   `);
-  setTimeout(()=>{ document.getElementById('pin-mgr-new')?.focus(); },100);
 }
 
-function savePinManager(){
-  const mgrRaw = (document.getElementById('pin-mgr-new')?.value || '').trim();
-  const csrRaw = (document.getElementById('pin-csr-new')?.value || '').trim();
-  const pins   = loadPins();
-
-  if(mgrRaw !== ''){
-    if(!/^\d{4,6}$/.test(mgrRaw)){ alert('PIN Manager invalide — 4 à 6 chiffres requis.'); return; }
-    pins.manager = mgrRaw;
-  }
-  if(csrRaw !== ''){
-    if(!/^\d{4,6}$/.test(csrRaw)){ alert('PIN Caissier invalide — 4 à 6 chiffres requis.'); return; }
-    pins.caissier = csrRaw;
-  }
-
-  savePins(pins);
-  destroySessionModal();
-  flash('✓ PINs mis à jour avec succès');
+function addUser(){
+  const name = (document.getElementById('new-user-name')?.value||'').trim();
+  const pin = (document.getElementById('new-user-pin')?.value||'').trim();
+  const role = document.getElementById('new-user-role')?.value||'Caissier';
+  if(!name){ alert('Nom requis'); return; }
+  if(!/^\d{4,6}$/.test(pin)){ alert('PIN invalide — 4 à 6 chiffres'); return; }
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g,'_');
+  if(USERS[id]){ alert('Cet utilisateur existe déjà'); return; }
+  const isManager = role === 'Manager';
+  USERS[id] = { pin, name, role, color: isManager?'var(--gold-l)':'var(--blue)', bg: isManager?'rgba(200,145,58,.2)':'rgba(74,144,217,.2)', letter: name.charAt(0), isManager };
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ ' + name + ' ajouté');
 }
 
-// Init PINs on startup
-initPins();
+function editUser(id){
+  const u = USERS[id];
+  if(!u) return;
+  const newPin = prompt('Nouveau PIN pour ' + u.name + ' (4-6 chiffres):', u.pin);
+  if(newPin === null) return;
+  if(!/^\d{4,6}$/.test(newPin)){ alert('PIN invalide'); return; }
+  USERS[id].pin = newPin;
+  const newName = prompt('Nom:', u.name);
+  if(newName && newName.trim()) {
+    USERS[id].name = newName.trim();
+    USERS[id].letter = newName.charAt(0);
+  }
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ ' + USERS[id].name + ' modifié');
+}
+
+function deleteUser(id){
+  if(!USERS[id]) return;
+  if(!confirm('Supprimer ' + USERS[id].name + ' ?')) return;
+  delete USERS[id];
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ Utilisateur supprimé');
+}
 
 function showHistorique(){
   if(!hist.length){alert('Aucune vente cette session.');return;}
@@ -2266,13 +2298,8 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
-  // Don't add ripple on inputs/textareas to avoid focus issues
-  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
   const t=e.target.closest('.pc,.hdr-btn,.enc,.pin-btn,.user-card,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
   if(!t)return;
-  // Limit active ripples to prevent memory issues
-  const existing = t.querySelectorAll('.ripple-el');
-  if(existing.length > 2) return;
   const rect=t.getBoundingClientRect();
   const size=Math.max(rect.width,rect.height);
   const r=document.createElement('span');
@@ -2280,17 +2307,10 @@ document.addEventListener('pointerdown',function(e){
   r.style.width=r.style.height=size+'px';
   r.style.left=(e.clientX-rect.left-size/2)+'px';
   r.style.top=(e.clientY-rect.top-size/2)+'px';
+  const prevPos=getComputedStyle(t).position;
+  if(prevPos==='static')t.style.position='relative';
   t.appendChild(r);
-  setTimeout(()=>{try{r.remove();}catch(e){}},600);
-});
-
-// ═══════════════ FOCUS FIX (prevents keyboard from being blocked) ═══════════════
-// Electron sometimes loses focus on inputs after many DOM operations.
-// This ensures clicking on an input always gives it focus.
-document.addEventListener('click', function(e) {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-    e.target.focus();
-  }
+  setTimeout(()=>r.remove(),600);
 });
 </script>
 </body>
