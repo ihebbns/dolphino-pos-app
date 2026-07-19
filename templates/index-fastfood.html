@@ -730,6 +730,27 @@ function loadStock(){
 }
 function saveStock(stock){
   localStorage.setItem(STOCK_KEY,JSON.stringify(stock));
+  syncStockToServer(stock);
+}
+
+// ── Sync stock to server for dashboard display ──
+async function syncStockToServer(stock){
+  if(!SYNC_ENABLED) return;
+  try{
+    const items = [];
+    const drinkItems = (MENU['Boisson']||{items:[]}).items;
+    for(const it of drinkItems){
+      if(typeof stock[it.id]==='number'){
+        items.push({ item_id: it.id, item_name: it.name, item_emoji: it.e||'🥤', quantity: stock[it.id] });
+      }
+    }
+    if(items.length === 0) return;
+    await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({ items })
+    });
+  }catch(e){ /* silent — stock sync is not critical */ }
 }
 function decreaseStock(soldItems){
   const stock=loadStock();
