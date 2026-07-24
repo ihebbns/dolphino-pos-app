@@ -29,6 +29,10 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
 .radio-card .icon{font-size:28px;margin-bottom:4px}
 .radio-card .label{font-size:12px;font-weight:600;color:var(--gold-l)}
 .radio-card .desc{font-size:10px;color:var(--muted);margin-top:2px}
+.modules-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.mod-chk{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px 12px;font-size:12px;cursor:pointer;user-select:none}
+.mod-chk:hover{border-color:var(--gold)}
+.mod-chk input{accent-color:var(--gold);width:16px;height:16px;flex-shrink:0}
 .btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .12s}
 .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-l));color:#080604}
 .btn-gold:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(200,145,58,.3)}
@@ -93,6 +97,25 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
           <div class="radio-card" id="type-cafe" onclick="setType('cafe')">
             <div class="icon">☕</div><div class="label">Café / Restaurant</div><div class="desc">Service à table</div>
           </div>
+          <div class="radio-card" id="type-retail" onclick="setType('retail')">
+            <div class="icon">🏪</div><div class="label">Commerce / Retail</div><div class="desc">Parapharmacie, Superette, Librairie, Boutique...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modules / Features -->
+      <div class="field full" style="margin-bottom:16px">
+        <label>Fonctionnalités activées (Modules) — le type d'activité pré-remplit, vous pouvez ajuster</label>
+        <div class="modules-grid" id="modules-grid">
+          <label class="mod-chk"><input type="checkbox" id="m-tables" onchange="onModuleChange()"> 🪑 Tables (service à table)</label>
+          <label class="mod-chk"><input type="checkbox" id="m-barcode" onchange="onModuleChange()"> ⎸⎹ Code-barres (retail)</label>
+          <label class="mod-chk"><input type="checkbox" id="m-credit" checked> 📒 Crédit clients</label>
+          <label class="mod-chk"><input type="checkbox" id="m-stockTracking" checked> 📦 Gestion de stock</label>
+          <label class="mod-chk"><input type="checkbox" id="m-poleDisplay" checked> 🖥️ Afficheur client (VFD)</label>
+          <label class="mod-chk"><input type="checkbox" id="m-kitchenTickets" checked> 🍳 Tickets cuisine</label>
+          <label class="mod-chk"><input type="checkbox" id="m-printEnabled" checked> 🖨️ Impression tickets</label>
+          <label class="mod-chk"><input type="checkbox" id="m-dashboard" checked> 📊 Tableau de bord</label>
+          <label class="mod-chk"><input type="checkbox" id="m-menuManage" checked> 🛠️ Gestion du menu</label>
         </div>
       </div>
 
@@ -112,14 +135,12 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
         </div>
       </div>
 
-      <!-- Cafe specific -->
+      <!-- Table settings (shown when the Tables module is on) -->
       <div id="cafe-fields" style="display:none">
         <div class="sep"></div>
         <div class="grid">
           <div class="field"><label>Nombre de tables</label><input id="f-tables" type="number" value="12"></div>
-          <div class="field"><label>Impression tickets</label>
-            <select id="f-print"><option value="true">Activée</option><option value="false">Désactivée</option></select>
-          </div>
+          <div class="field"><label>Salles (séparées par des virgules)</label><input id="f-sections" placeholder="Salle, Terrasse" value="Salle, Terrasse"></div>
         </div>
       </div>
 
@@ -182,7 +203,7 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
 
 <script>
 const API = 'http://localhost:4500';
-const VERCEL_API = 'https://dolphino-saas.vercel.app'; // TODO: migrate to servio domain when ready
+const VERCEL_API = 'https://servio.tn';
 const ADMIN_KEY = 'servio-admin-iheb-2026';
 
 let businessType = 'fastfood';
@@ -193,6 +214,7 @@ let iconBase64 = '';
 // ── Init ──
 loadClients();
 checkServer();
+applyModulePreset(businessType);
 
 async function checkServer() {
   try {
@@ -215,13 +237,39 @@ async function loadClients() {
 }
 
 // ── Business type ──
+const MODULE_KEYS = ['tables','barcode','credit','stockTracking','poleDisplay','kitchenTickets','printEnabled','dashboard','menuManage'];
+const MODULE_PRESETS = {
+  fastfood: { tables:false, barcode:false, credit:true, stockTracking:true, poleDisplay:true, kitchenTickets:true,  printEnabled:true, dashboard:true, menuManage:true },
+  cafe:     { tables:true,  barcode:false, credit:true, stockTracking:true, poleDisplay:true, kitchenTickets:true,  printEnabled:true, dashboard:true, menuManage:true },
+  retail:   { tables:false, barcode:true,  credit:true, stockTracking:true, poleDisplay:true, kitchenTickets:false, printEnabled:true, dashboard:true, menuManage:true },
+};
+
 function setType(t) {
   businessType = t;
   document.getElementById('type-fastfood').className = 'radio-card' + (t==='fastfood'?' active':'');
   document.getElementById('type-cafe').className = 'radio-card' + (t==='cafe'?' active':'');
-  document.getElementById('cafe-fields').style.display = t==='cafe' ? 'block' : 'none';
+  document.getElementById('type-retail').className = 'radio-card' + (t==='retail'?' active':'');
   if (t==='cafe' && !document.getElementById('f-logo').value) document.getElementById('f-logo').value = '☕';
   if (t==='fastfood' && document.getElementById('f-logo').value === '☕') document.getElementById('f-logo').value = '🍔';
+  if (t==='retail') document.getElementById('f-logo').value = '🏪';
+  applyModulePreset(t);
+}
+
+function applyModulePreset(t) {
+  const p = MODULE_PRESETS[t] || MODULE_PRESETS.fastfood;
+  MODULE_KEYS.forEach(k => { const el = document.getElementById('m-'+k); if (el) el.checked = !!p[k]; });
+  onModuleChange();
+}
+
+function onModuleChange() {
+  const tablesOn = document.getElementById('m-tables').checked;
+  document.getElementById('cafe-fields').style.display = tablesOn ? 'block' : 'none';
+}
+
+function collectModules() {
+  const m = {};
+  MODULE_KEYS.forEach(k => { const el = document.getElementById('m-'+k); m[k] = el ? el.checked : false; });
+  return m;
 }
 
 // ── API key ──
@@ -378,8 +426,10 @@ async function buildClient() {
       cashierName: document.getElementById('f-cash-name').value.trim(),
       cashierPin: document.getElementById('f-cash-pin').value.trim(),
       businessType,
+      modules: collectModules(),
       tableCount: parseInt(document.getElementById('f-tables').value) || 12,
-      printEnabled: document.getElementById('f-print').value === 'true',
+      sections: (document.getElementById('f-sections').value || '').split(',').map(s => s.trim()).filter(Boolean),
+      printEnabled: document.getElementById('m-printEnabled').checked,
       menu: Object.keys(menu).length > 0 ? menu : undefined,
       iconBase64: iconBase64 || undefined,
     };

@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSession:    (session)     => ipcRenderer.invoke('db-save-session', session),
   closeSession:   (id, data)    => ipcRenderer.invoke('db-close-session', id, data),
   getSessions:    ()            => ipcRenderer.invoke('db-get-sessions'),
+  applyOtaUpdate: (html)        => ipcRenderer.invoke('ota-apply-update', html),
 });

@@ -98,13 +98,13 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .cat-chip.on{border-color:var(--gold);color:var(--gold-l);background:var(--gold-dim)}
 
 /* Product grid inside order panel */
-.prod-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px;overflow-y:auto;max-height:220px}
-.prod-card{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer;transition:all .12s;font-size:11px}
-.prod-card:hover{border-color:var(--gold);background:var(--card-h)}
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;padding:12px;overflow-y:auto}
+.prod-card{background:var(--card);border:1px solid var(--div);border-radius:12px;padding:16px 10px 12px;text-align:center;cursor:pointer;transition:all .12s;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:110px;position:relative}
+.prod-card:hover{border-color:var(--gold);background:var(--card-h);transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.15)}
 .prod-card:active{transform:scale(.96)}
-.prod-em{font-size:18px}
-.prod-nm{font-size:10px;font-weight:500;margin-top:2px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.prod-pr{font-size:11px;font-weight:700;color:var(--gold-l);margin-top:2px}
+.prod-em{font-size:36px;margin-bottom:4px}
+.prod-nm{font-size:11px;font-weight:600;margin-top:2px;line-height:1.3;max-height:2.6em;overflow:hidden}
+.prod-pr{font-size:13px;font-weight:800;color:var(--gold-l);margin-top:auto;padding-top:4px}
 
 /* Order items list */
 #order-items{flex:1;overflow-y:auto;border-top:1px solid var(--div)}
@@ -217,7 +217,7 @@ const CLIENT_CONFIG = {
 
   // ── Sync ──
   syncEnabled: true,
-  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
+  syncUrl:     'https://servio.tn/api/sync',
   syncKey:     'CHANGE-ME-KEY',
 
   // ── Users / PINs ──
@@ -328,15 +328,29 @@ let MENU = {
   ]}
 };
 
-// ═══════════════ USERS & ROLES ═══════════════
-const USERS = {
-  manager: { pin: CLIENT_CONFIG.managerPin, name: CLIENT_CONFIG.managerName, role: 'Manager', color: 'var(--gold-l)', bg: 'rgba(200,145,58,.2)', isManager: true, canSettle: true },
-  caissier: { pin: CLIENT_CONFIG.cashierPin, name: CLIENT_CONFIG.cashierName, role: 'Caissier', color: 'var(--blue)', bg: 'rgba(74,144,217,.2)', isManager: false, canSettle: true },
-};
+// ═══════════════ USERS & ROLES (Dynamic) ═══════════════
+const USERS_KEY = 'servio-users-v1';
 
-// Additional servers can be added per-client
-const EXTRA_USERS = [];
-// Format: { id:'serv1', pin:'5555', name:'Ahmed', role:'Serveur', canSettle: false }
+function getDefaultUsers(){
+  return {
+    manager: { id:'manager', pin: CLIENT_CONFIG.managerPin, name: CLIENT_CONFIG.managerName, role: 'Manager', color: 'var(--gold-l)', bg: 'rgba(200,145,58,.2)', isManager: true, canSettle: true },
+    caissier: { id:'caissier', pin: CLIENT_CONFIG.cashierPin, name: CLIENT_CONFIG.cashierName, role: 'Caissier', color: 'var(--blue)', bg: 'rgba(74,144,217,.2)', isManager: false, canSettle: true },
+  };
+}
+
+function loadUsers(){
+  try{
+    const raw=localStorage.getItem(USERS_KEY);
+    if(raw){const parsed=JSON.parse(raw);if(Object.keys(parsed).length>0)return parsed;}
+  }catch(e){}
+  return getDefaultUsers();
+}
+
+function saveUsers(users){
+  localStorage.setItem(USERS_KEY,JSON.stringify(users));
+}
+
+let USERS = loadUsers();
 
 // ═══════════════ STATE ═══════════════
 let currentUser = null;
@@ -348,6 +362,7 @@ let orderNum = 1;
 let dailyTotal = 0;
 let currentSession = null;
 let history = [];
+let cashMovements = [];
 
 const STORE = {
   tables: 'servio-cafe-tables-v1',
@@ -371,7 +386,7 @@ const STATUS_LABELS = {
 };
 
 const STATUS_ICONS = {
-  free: '⬜', occupied: '🪑', sent: '🍳', bill: '💰', clean: '🧹'
+  free: '🟩', occupied: '🪑', sent: '🍳', bill: '💰', clean: '🧹'
 };
 
 // ═══════════════ INIT TABLES ═══════════════
@@ -447,10 +462,7 @@ function renderLogin() {
   document.getElementById('hdr').style.display = 'none';
   document.getElementById('main').style.display = 'none';
   document.getElementById('statusbar').style.display = 'none';
-  const allUsers = [
-    ...Object.entries(USERS).map(([k,u]) => ({id:k,...u})),
-    ...EXTRA_USERS
-  ];
+  const allUsers = Object.values(USERS);
   document.getElementById('login').innerHTML = `
     <div class="login-box">
       <div class="login-logo">${CLIENT_CONFIG.logo}</div>
@@ -499,7 +511,7 @@ function pinKey(k) {
   pinBuffer += k;
   renderPinDots();
   if (pinBuffer.length === 4) {
-    const user = USERS[pinTarget] || EXTRA_USERS.find(u => u.id === pinTarget);
+    const user = USERS[pinTarget];
     if (user && user.pin === pinBuffer) {
       currentUser = pinTarget;
       activeTableId = null;
@@ -519,7 +531,7 @@ function logout() { currentUser = null; activeTableId = null; render(); }
 function renderHeader() {
   const hdr = document.getElementById('hdr');
   hdr.style.display = 'flex';
-  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const user = USERS[currentUser] || {};
   const occupied = tables.filter(t => t.status !== STATUS.FREE).length;
   const openTotal = tables.reduce((s,t) => s + t.total, 0);
 
@@ -534,9 +546,13 @@ function renderHeader() {
       ${openTotal > 0 ? `<div class="hdr-badge" style="background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);color:var(--gold-l)">${f(openTotal)} ${CLIENT_CONFIG.currency}</div>` : ''}
       ${currentSession ? `<div class="hdr-badge hdr-badge-green">✓ ${currentSession.cashier}</div>` : ''}
       ${user.isManager ? `<button class="hdr-btn" onclick="showMenuManage()">🛠️ Menu</button>` : ''}
+      ${user.isManager ? `<button class="hdr-btn" onclick="showTableManager()">🪑 Tables</button>` : ''}
+      ${user.isManager ? `<button class="hdr-btn" onclick="showUserManager()">👥</button>` : ''}
       ${user.isManager ? `<button class="hdr-btn" onclick="showDashboard()">📊</button>` : ''}
+      ${user.isManager && currentSession ? `<button class="hdr-btn" onclick="showCashMovements()">💰 Mouvements</button>` : ''}
       ${user.isManager && currentSession ? `<button class="hdr-btn" style="border-color:rgba(224,82,82,.3);color:var(--red)" onclick="showCloseCaisse()">🔒 Clôturer</button>` : ''}
       ${user.isManager && !currentSession ? `<button class="hdr-btn" style="border-color:rgba(61,184,122,.3);color:var(--green)" onclick="showOpenSession()">💰 Ouvrir</button>` : ''}
+      <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
       <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme">${document.body.classList.contains('light')?'🌙':'☀️'}</button>
       <button class="hdr-btn" onclick="logout()">⏻ ${user.name||''}</button>
     </div>`;
@@ -584,7 +600,7 @@ function renderOrderView() {
   main.style.display = 'flex';
   const cats = Object.keys(MENU);
   const items = MENU[currentCat]?.items || [];
-  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const user = USERS[currentUser] || {};
   const canSettle = user.canSettle || CLIENT_CONFIG.encaissementMode === 'any_server' || user.isManager;
 
   main.innerHTML = `
@@ -594,11 +610,11 @@ function renderOrderView() {
         ${cats.map(c => `<div class="cat-chip${c===currentCat?' on':''}" onclick="setCat('${c}')">${MENU[c].icon} ${c}</div>`).join('')}
       </div>
       <!-- Product grid -->
-      <div style="flex:1;overflow-y:auto;padding:10px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+      <div style="flex:1;overflow-y:auto;padding:12px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">
           ${items.map(it => `
             <div class="prod-card" onclick='addItem(${JSON.stringify(it).replace(/'/g,"&#39;")})'>
-              <div class="prod-em">${it.e}</div>
+              ${it.img ? `<img src="${it.img}" style="width:48px;height:48px;object-fit:cover;border-radius:8px" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div class="prod-em" style="display:none">${it.e}</div>` : `<div class="prod-em">${it.e}</div>`}
               <div class="prod-nm">${it.name}</div>
               <div class="prod-pr">${f(it.p)} ${CLIENT_CONFIG.currency}</div>
             </div>
@@ -646,7 +662,7 @@ function renderOrderView() {
         <div class="pay-btns">
           ${CLIENT_CONFIG.kitchenPrint&&t.items.length?`<button class="pay-btn pay-btn-orange" onclick="sendToKitchen()">🍳 Envoyer</button>`:''}
           ${t.status===STATUS.OCCUPIED||t.status===STATUS.SENT?`<button class="pay-btn pay-btn-orange" onclick="requestBill()">📄 Addition</button>`:''}
-          <button class="pay-btn pay-btn-green" onclick="settleTable()" ${!canSettle||t.items.length===0?'disabled':''}>${canSettle?'💰 Encaisser':'🔒 Caissier'}</button>
+          <button class="pay-btn pay-btn-green" onclick="settleTable()" ${!canSettle||t.items.length===0||!currentSession?'disabled':''}>${!currentSession?'💰 Ouvrir caisse':canSettle?'💰 Encaisser':'🔒 Caissier'}</button>
         </div>
         ${CLIENT_CONFIG.printEnabled&&t.items.length?`<button style="width:100%;margin-top:6px;padding:8px;background:var(--card);border:1px solid var(--div);border-radius:6px;color:var(--muted);font-size:11px" onclick="printTableTicket()">🖨️ Imprimer ticket intermédiaire</button>`:''}
       </div>
@@ -659,10 +675,11 @@ function setCat(c) { currentCat = c; render(); }
 function addItem(item) {
   const t = getTable(activeTableId);
   if (!t) return;
+  if (!currentSession) { flash('💰 Ouvrez la caisse d\'abord'); return; }
   if (t.status === STATUS.FREE) {
     t.status = STATUS.OCCUPIED;
     t.openedAt = now();
-    t.server = (USERS[currentUser]||EXTRA_USERS.find(u=>u.id===currentUser)||{}).name || '';
+    t.server = (USERS[currentUser]||{}).name || '';
   }
   // Check modifiers for café items
   if (F.modifiers && CLIENT_CONFIG.zone1Cats.includes(currentCat)) {
@@ -854,7 +871,8 @@ function confirmModifiers(item) {
 function settleTable() {
   const t = getTable(activeTableId);
   if (!t || t.items.length === 0) return;
-  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  if (!currentSession) { flash('💰 Ouvrez la caisse d\'abord'); return; }
+  const user = USERS[currentUser] || {};
   const canSettle = user.canSettle || CLIENT_CONFIG.encaissementMode === 'any_server' || user.isManager;
   if (!canSettle) { flash('🔒 Seul le caissier peut encaisser'); return; }
 
@@ -868,7 +886,6 @@ function settleTable() {
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="op-btn" style="flex:1;padding:10px" id="pay-cash" onclick="selectPay('cash')"><div>💵</div>Espèces</button>
       <button class="op-btn" style="flex:1;padding:10px" id="pay-card" onclick="selectPay('card')"><div>💳</div>Carte</button>
-      <button class="op-btn" style="flex:1;padding:10px" id="pay-mob" onclick="selectPay('mob')"><div>📱</div>Mobile</button>
     </div>
     ${F.splitBill ? `<button class="op-btn" style="width:100%;padding:10px;margin-bottom:10px" onclick="showSplitBill()">✂️ Diviser l'addition</button>` : ''}
     <button class="pay-btn pay-btn-green" style="width:100%;padding:14px;font-size:14px" onclick="confirmSettle()">✓ Confirmer le paiement</button>
@@ -891,7 +908,7 @@ function selectPay(mode) {
 function confirmSettle() {
   const t = getTable(activeTableId);
   if (!t) return;
-  const user = USERS[currentUser] || EXTRA_USERS.find(u => u.id === currentUser) || {};
+  const user = USERS[currentUser] || {};
 
   const saleData = {
     num: orderNum++,
@@ -903,6 +920,7 @@ function confirmSettle() {
     payMode: selectedPay, r: t.total, monnaie: 0,
     cashier: user.name || 'Caissier',
     type: 'table', cliName: 'Table ' + t.id, cliTel: '',
+    sessionId: currentSession?.sid || '',
   };
 
   // Save locally
@@ -963,6 +981,7 @@ function splitByAmount() {
     items: [{ name: 'Paiement partiel Table ' + t.id, qty: 1, price: amount }],
     s: amount, d: 0, disc: 0, g: amount, payMode: selectedPay||'cash', r: amount, monnaie: 0,
     cashier: (USERS[currentUser]||{}).name||'Caissier', type: 'table', cliName: 'Table '+t.id, cliTel: '',
+    sessionId: currentSession?.sid || '',
   };
   if (window.electronAPI?.saveSale) window.electronAPI.saveSale(saleData);
   syncSale(saleData);
@@ -1003,6 +1022,7 @@ function confirmSplitItems() {
     items: selectedItems.map(it => ({ name: it.name, qty: it.qty, price: it.price })),
     s: amount, d: 0, disc: 0, g: amount, payMode: 'cash', r: amount, monnaie: 0,
     cashier: (USERS[currentUser]||{}).name||'Caissier', type: 'table', cliName: 'Table '+t.id, cliTel: '',
+    sessionId: currentSession?.sid || '',
   };
   if (window.electronAPI?.saveSale) window.electronAPI.saveSale(saleData);
   syncSale(saleData); dailyTotal += amount;
@@ -1039,7 +1059,7 @@ function showOpenSession() {
     <div class="session-box">
       <div style="font-size:40px;margin-bottom:8px">💰</div>
       <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);margin-bottom:6px">Ouverture de Caisse</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:18px">Saisissez le fond de caisse initial</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:18px">Caissier : <strong>${user.name||'—'}</strong></div>
       <div style="margin-bottom:12px"><input id="fond-inp" type="number" step="0.5" placeholder="0.000" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:20px;font-weight:700;text-align:center;outline:none" autocomplete="off"></div>
       <button onclick="confirmOpenSession()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">✓ Ouvrir la caisse</button>
     </div>
@@ -1049,8 +1069,9 @@ function showOpenSession() {
 
 function confirmOpenSession() {
   const fond = parseFloat(document.getElementById('fond-inp')?.value) || 0;
-  const user = USERS[currentUser] || EXTRA_USERS.find(u=>u.id===currentUser) || {};
-  currentSession = { id: Date.now(), fondInitial: fond, openedAt: now(), cashier: user.name||'Caissier', date: todayKey() };
+  const user = USERS[currentUser] || {};
+  const sid = 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  currentSession = { id: Date.now(), sid, fondInitial: fond, openedAt: now(), openedAtISO: new Date().toISOString(), cashier: user.name||'Caissier', date: todayKey() };
   saveSession();
   if (window.electronAPI?.saveSession) window.electronAPI.saveSession({ businessDate: todayKey(), cashier: currentSession.cashier, openedAt: currentSession.openedAt, fondInitial: fond });
   closeSessionModal();
@@ -1226,17 +1247,24 @@ function renderStatusBar() {
 
 // ═══════════════ DASHBOARD (simple) ═══════════════
 function showDashboard() {
+  // Dashboard shows ALL business day sales (not just session)
   const todaySales = history.filter(s => s.businessDate === todayKey());
   const total = todaySales.reduce((s,x) => s + (x.g||0), 0);
   const count = todaySales.length;
+  const cash = todaySales.filter(s => s.payMode === 'cash').reduce((s,x) => s + (x.g||0), 0);
   showModal(`
-    <div class="modal-title">📊 Tableau de bord — Aujourd'hui</div>
+    <div class="modal-title">📊 Tableau de bord — Jour business</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
       <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--gold-l)">${f(total)}</div><div style="font-size:10px;color:var(--muted)">Recette</div></div>
       <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--green)">${count}</div><div style="font-size:10px;color:var(--muted)">Commandes</div></div>
       <div style="background:var(--card);border-radius:8px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--blue)">${count?f(total/count):'0.000'}</div><div style="font-size:10px;color:var(--muted)">Ticket moyen</div></div>
     </div>
-    ${todaySales.length?`<div style="max-height:200px;overflow-y:auto">${todaySales.slice(0,20).map(s => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span>#${String(s.num).padStart(3,'0')} ${s.time} · ${s.cliName}</span><span style="color:var(--gold-l);font-weight:700">${f(s.g)}</span></div>`).join('')}</div>`:'<div style="text-align:center;color:var(--muted);padding:20px">Aucune vente aujourd\'hui</div>'}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:700;color:var(--gold-l)">${f(cash)}</div><div style="font-size:10px;color:var(--muted)">Especes</div></div>
+      <div style="background:var(--card);border-radius:8px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:700;color:var(--blue)">${f(total-cash)}</div><div style="font-size:10px;color:var(--muted)">Carte</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px">COMMANDES DU JOUR</div>
+    ${todaySales.length?`<div style="max-height:250px;overflow-y:auto">${[...todaySales].reverse().slice(0,30).map(s => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted);width:40px">#${String(s.num).padStart(3,'0')}</span><span style="width:45px">${s.time||''}</span><span style="flex:1;font-size:10px">${s.cliName||''}</span><span style="font-size:10px;color:var(--muted);width:60px">${s.cashier||''}</span><span style="font-weight:700;color:var(--gold-l);width:60px;text-align:right">${f(s.g)}</span></div>`).join('')}</div>`:'<div style="text-align:center;color:var(--muted);padding:20px">Aucune vente aujourd\'hui</div>'}
     <button class="modal-close" onclick="closeModal()">Fermer</button>
   `);
 }
@@ -1255,7 +1283,7 @@ async function hydrateState() {
     if (!window.electronAPI?.getSales) return;
     const sales = await window.electronAPI.getSales();
     if (!Array.isArray(sales)) return;
-    history = sales.map(s => ({ num:s.num, businessDate:s.businessDate, date:s.date, time:s.time, items:s.items||[], s:s.sub, d:s.discount, disc:s.disc, g:s.grand, payMode:s.payMethod, r:s.received, monnaie:s.monnaie, cashier:s.cashier, type:s.type, cliName:s.cliName||'', cliTel:'' }));
+    history = sales.map(s => ({ num:s.num, businessDate:s.businessDate, date:s.date, time:s.time, items:s.items||[], s:s.sub, d:s.discount, disc:s.disc, g:s.grand, payMode:s.payMethod, r:s.received, monnaie:s.monnaie, cashier:s.cashier, type:s.type, cliName:s.cliName||'', cliTel:'', sessionId:s.sessionId||'' }));
     const todaySales = history.filter(s => s.businessDate === todayKey());
     dailyTotal = todaySales.reduce((s,x) => s + (x.g||0), 0);
     orderNum = todaySales.length ? Math.max(...todaySales.map(s => s.num||0)) + 1 : 1;
@@ -1266,12 +1294,14 @@ hydrateState();
 // ═══════════════ CLÔTURE DE CAISSE ═══════════════
 function showCloseCaisse() {
   if (!currentSession) return;
-  const todaySales = history.filter(s => s.businessDate === todayKey());
+  const todaySales = history.filter(s => s.sessionId === (currentSession?.sid||'') || (!s.sessionId && s.businessDate === todayKey()));
   const totalSales = todaySales.reduce((s,x) => s + (x.g||0), 0);
   const cashSales = todaySales.filter(s => s.payMode === 'cash').reduce((s,x) => s + (x.g||0), 0);
   const cardSales = todaySales.filter(s => s.payMode === 'card').reduce((s,x) => s + (x.g||0), 0);
   const mobSales = todaySales.filter(s => s.payMode === 'mob').reduce((s,x) => s + (x.g||0), 0);
-  const theorique = currentSession.fondInitial + cashSales;
+  const totalCashIn = cashMovements.filter(m=>m.type==='in').reduce((s,m)=>s+m.amount,0);
+  const totalCashOut = cashMovements.filter(m=>m.type==='out').reduce((s,m)=>s+m.amount,0);
+  const theorique = currentSession.fondInitial + cashSales + totalCashIn - totalCashOut;
 
   showModal(`
     <div class="modal-title">🔒 Clôture de Caisse</div>
@@ -1281,8 +1311,9 @@ function showCloseCaisse() {
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">Ventes total</span><span style="color:var(--gold-l);font-weight:700">${f(totalSales)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">💵 Espèces</span><span>${f(cashSales)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">💳 Carte</span><span>${f(cardSales)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">📱 Mobile</span><span>${f(mobSales)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">Commandes</span><span>${todaySales.length}</span></div>
+      ${totalCashIn>0?`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">+ Ajouts fond</span><span style="color:var(--green)">+${f(totalCashIn)}</span></div>`:''}
+      ${totalCashOut>0?`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px"><span style="color:var(--muted)">− Retraits</span><span style="color:var(--red)">−${f(totalCashOut)}</span></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;font-weight:700"><span>Théorique en caisse</span><span style="color:var(--green)">${f(theorique)}</span></div>
     </div>
     <div style="margin-bottom:14px">
@@ -1298,14 +1329,24 @@ function showCloseCaisse() {
 function confirmCloseCaisse(totalSales, cashSales, cardSales, mobSales, ordersCount, theorique) {
   const montant = parseFloat(document.getElementById('cloture-montant')?.value) || 0;
   const ecart = montant - theorique;
+  const totalCashIn = cashMovements.filter(m=>m.type==='in').reduce((s,m)=>s+m.amount,0);
+  const totalCashOut = cashMovements.filter(m=>m.type==='out').reduce((s,m)=>s+m.amount,0);
 
   const clotureData = {
     businessDate: todayKey(),
     cashier: currentSession.cashier,
     fondInitial: currentSession.fondInitial,
-    totalSales, cashSales, cardSales, mobSales, ordersCount,
+    // API-expected field names
+    total: totalSales, cashTotal: cashSales, cardTotal: cardSales, mobileTotal: mobSales, ordersCount,
+    // keep legacy names for local SQLite
+    totalSales, cashSales, cardSales, mobSales,
     montantCompte: montant, theorique, ecart,
     closedAt: now(),
+    sessionId: currentSession?.sid || '',
+    openedAtISO: currentSession?.openedAtISO || null,
+    closedAtISO: new Date().toISOString(),
+    cashMovements: cashMovements,
+    totalCashIn, totalCashOut,
   };
 
   // Save locally
@@ -1316,6 +1357,7 @@ function confirmCloseCaisse(totalSales, cashSales, cardSales, mobSales, ordersCo
 
   // Clear session
   currentSession = null;
+  cashMovements = [];
   saveSession();
   closeModal();
   render();
@@ -1329,6 +1371,175 @@ async function syncCloture(data) {
     await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':SYNC_API_KEY}, body:JSON.stringify(data) });
   } catch(e) { /* queue for later if needed */ }
 }
+
+// ═══════════════ CASH MOVEMENTS (Ajout/Retrait) ═══════════════
+function showCashMovements() {
+  const totalIn = cashMovements.filter(m=>m.type==='in').reduce((s,m)=>s+m.amount,0);
+  const totalOut = cashMovements.filter(m=>m.type==='out').reduce((s,m)=>s+m.amount,0);
+  showModal(`
+    <div class="modal-title">💰 Mouvements de Caisse</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="pay-btn pay-btn-green" style="flex:1;padding:12px" onclick="showCashIn()">+ Ajout de fond</button>
+      <button class="pay-btn" style="flex:1;padding:12px;background:var(--card);border:1px solid rgba(224,82,82,.3);color:var(--red)" onclick="showCashOut()">− Retrait</button>
+    </div>
+    <div style="background:var(--card);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--div)"><span style="color:var(--muted)">Total ajouts</span><span style="color:var(--green);font-weight:700">+${f(totalIn)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span style="color:var(--muted)">Total retraits</span><span style="color:var(--red);font-weight:700">−${f(totalOut)}</span></div>
+    </div>
+    ${cashMovements.length?`<div style="max-height:180px;overflow-y:auto;margin-bottom:12px">${cashMovements.map(m=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--div);font-size:11px"><span>${m.time} · ${m.reason||'—'}</span><span style="color:${m.type==='in'?'var(--green)':'var(--red)'};font-weight:700">${m.type==='in'?'+':'−'}${f(m.amount)}</span></div>`).join('')}</div>`:'<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aucun mouvement</div>'}
+    <button class="modal-close" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+function showCashIn() {
+  showModal(`
+    <div class="modal-title">+ Ajout de Fond</div>
+    <div style="margin-bottom:10px"><input id="cash-mv-amount" type="number" step="0.5" placeholder="Montant" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:18px;font-weight:700;text-align:center;outline:none" autocomplete="off"></div>
+    <div style="margin-bottom:14px"><input id="cash-mv-reason" type="text" placeholder="Motif (optionnel)" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:13px;outline:none" autocomplete="off"></div>
+    <button onclick="confirmCashMovement('in')" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✓ Confirmer l'ajout</button>
+    <button class="modal-close" onclick="showCashMovements()">← Retour</button>
+  `);
+  setTimeout(()=>document.getElementById('cash-mv-amount')?.focus(),100);
+}
+
+function showCashOut() {
+  showModal(`
+    <div class="modal-title">− Retrait de Caisse</div>
+    <div style="margin-bottom:10px"><input id="cash-mv-amount" type="number" step="0.5" placeholder="Montant" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:18px;font-weight:700;text-align:center;outline:none" autocomplete="off"></div>
+    <div style="margin-bottom:14px"><input id="cash-mv-reason" type="text" placeholder="Motif (optionnel)" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:13px;outline:none" autocomplete="off"></div>
+    <button onclick="confirmCashMovement('out')" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--red),#c44);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✓ Confirmer le retrait</button>
+    <button class="modal-close" onclick="showCashMovements()">← Retour</button>
+  `);
+  setTimeout(()=>document.getElementById('cash-mv-amount')?.focus(),100);
+}
+
+function confirmCashMovement(type) {
+  const amount = parseFloat(document.getElementById('cash-mv-amount')?.value) || 0;
+  const reason = (document.getElementById('cash-mv-reason')?.value||'').trim();
+  if(amount <= 0){flash('Montant invalide');return;}
+  cashMovements.push({type, amount, reason, time: now(), date: todayKey()});
+  closeModal();
+  flash(type==='in'?`✅ +${f(amount)} ajouté en caisse`:`✅ −${f(amount)} retiré de la caisse`);
+}
+
+// ═══════════════ TABLE MANAGEMENT (Manager) ═══════════════
+function showTableManager() {
+  const user = USERS[currentUser] || {};
+  if (!user.isManager) { flash('🔒 Accès réservé au Manager'); return; }
+  const sections = CLIENT_CONFIG.sections;
+  const sectionCounts = {};
+  sections.forEach(s => { sectionCounts[s] = tables.filter(t => t.section === s && t.id !== 0).length; });
+
+  showModal(`
+    <div class="modal-title">🪑 Gérer les Tables</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">Total: ${tables.filter(t=>t.id!==0).length} tables · ${sections.length} sections</div>
+
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">SECTIONS</div>
+    <div style="margin-bottom:14px">
+      ${sections.map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--card);border:1px solid var(--div);border-radius:8px;margin-bottom:6px">
+          <span style="font-size:13px;font-weight:600">${s}</span>
+          <span style="font-size:11px;color:var(--muted)">${sectionCounts[s]} tables</span>
+          ${sections.length > 1 ? `<button class="hdr-btn" style="font-size:10px;padding:4px 8px;color:var(--red);border-color:rgba(224,82,82,.3)" onclick="deleteSection('${s}')">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input id="tm-new-section" placeholder="Nouvelle section (ex: Jardin)" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none" autocomplete="off">
+        <button class="hdr-btn" style="padding:8px 12px" onclick="addSection()">+ Ajouter</button>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">AJOUTER / SUPPRIMER DES TABLES</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select id="tm-section-select" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+        ${sections.map(s => `<option value="${s}">${s}</option>`).join('')}
+      </select>
+      <input id="tm-add-count" type="number" min="1" max="20" value="1" style="width:50px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;text-align:center;outline:none">
+      <button onclick="addTables()" style="padding:8px 14px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">+ Ajouter</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <select id="tm-del-section" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none">
+        ${sections.map(s => `<option value="${s}">${s} (${sectionCounts[s]})</option>`).join('')}
+      </select>
+      <button onclick="removeLastTable()" style="padding:8px 14px;background:rgba(224,82,82,.15);border:1px solid rgba(224,82,82,.3);border-radius:6px;color:var(--red);font-size:12px;font-weight:700;cursor:pointer">− Supprimer dernière</button>
+    </div>
+
+    <button class="modal-close" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+function addSection() {
+  const name = document.getElementById('tm-new-section')?.value?.trim();
+  if (!name) { flash('Nom de section requis'); return; }
+  if (CLIENT_CONFIG.sections.includes(name)) { flash('Section existe déjà'); return; }
+  CLIENT_CONFIG.sections.push(name);
+  localStorage.setItem('servio-cafe-sections-v1', JSON.stringify(CLIENT_CONFIG.sections));
+  saveTables();
+  flash('✓ Section "' + name + '" ajoutée');
+  showTableManager();
+  render();
+}
+
+function deleteSection(name) {
+  if (CLIENT_CONFIG.sections.length <= 1) { flash('Il faut au moins 1 section'); return; }
+  const sectionTables = tables.filter(t => t.section === name && t.id !== 0);
+  if (sectionTables.some(t => t.status !== STATUS.FREE)) { flash('Impossible — des tables sont occupées dans cette section'); return; }
+  if (!confirm('Supprimer la section "' + name + '" et ses ' + sectionTables.length + ' tables ?')) return;
+  // Remove tables of this section
+  tables = tables.filter(t => t.section !== name);
+  CLIENT_CONFIG.sections = CLIENT_CONFIG.sections.filter(s => s !== name);
+  if (currentSection === name) currentSection = CLIENT_CONFIG.sections[0];
+  saveTables();
+  // Also save sections to localStorage
+  localStorage.setItem('servio-cafe-sections-v1', JSON.stringify(CLIENT_CONFIG.sections));
+  flash('✓ Section "' + name + '" supprimée');
+  showTableManager();
+  render();
+}
+
+function addTables() {
+  const section = document.getElementById('tm-section-select')?.value;
+  const count = parseInt(document.getElementById('tm-add-count')?.value) || 1;
+  if (!section) return;
+  const maxId = tables.reduce((max, t) => Math.max(max, t.id), 0);
+  for (let i = 0; i < count; i++) {
+    tables.push({
+      id: maxId + 1 + i, section, status: STATUS.FREE,
+      items: [], total: 0, openedAt: null, server: null, sentAt: null, billAt: null
+    });
+  }
+  CLIENT_CONFIG.tableCount = tables.filter(t => t.id !== 0).length;
+  saveTables();
+  flash('✓ ' + count + ' table(s) ajoutée(s) dans ' + section);
+  showTableManager();
+  render();
+}
+
+function removeLastTable() {
+  const section = document.getElementById('tm-del-section')?.value;
+  if (!section) return;
+  const sectionTables = tables.filter(t => t.section === section && t.id !== 0);
+  if (!sectionTables.length) { flash('Aucune table dans cette section'); return; }
+  const last = sectionTables[sectionTables.length - 1];
+  if (last.status !== STATUS.FREE) { flash('Impossible — la dernière table est occupée'); return; }
+  tables = tables.filter(t => t.id !== last.id);
+  CLIENT_CONFIG.tableCount = tables.filter(t => t.id !== 0).length;
+  saveTables();
+  flash('✓ Table ' + last.id + ' supprimée');
+  showTableManager();
+  render();
+}
+
+// Load saved sections (if manager added/removed sections)
+(function loadSavedSections() {
+  try {
+    const saved = localStorage.getItem('servio-cafe-sections-v1');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) CLIENT_CONFIG.sections = parsed;
+    }
+  } catch(e) {}
+})();
 
 // ═══════════════ MENU MANAGEMENT (Manager) ═══════════════
 function showMenuManage() {
@@ -1420,6 +1631,186 @@ function loadMenuFromStorage() {
   } catch(e) {}
 }
 loadMenuFromStorage();
+
+// ═══════════════ USER MANAGER (Dynamic Add/Remove/Edit) ═══════════════
+function showUserManager(){
+  const user = USERS[currentUser] || {};
+  if(!user.isManager){flash('🔒 Accès réservé au Manager');return;}
+  const allUsers=Object.values(USERS);
+  const userRows=allUsers.map(u=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--card);border:1px solid var(--div);border-radius:8px;margin-bottom:6px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${(u.name||'?').charAt(0)}</div>
+      <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">${u.name}</div><div style="font-size:10px;color:var(--muted);">${u.role}${u.isManager?' · Manager':''}</div></div>
+      <button class="hdr-btn" onclick="editUser('${u.id}')" style="font-size:10px;padding:5px 8px;">✏️</button>
+      ${u.id!=='manager'?`<button class="hdr-btn" onclick="deleteUser('${u.id}')" style="font-size:10px;padding:5px 8px;color:var(--red);border-color:rgba(224,82,82,.3);">🗑️</button>`:''}
+    </div>
+  `).join('');
+
+  showModal(`
+    <div class="modal-title">👥 Gestion des utilisateurs</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:14px">Ajoutez, modifiez ou supprimez des utilisateurs avec PIN.</div>
+    <div id="um-list" style="max-height:240px;overflow-y:auto;margin-bottom:12px;">${userRows}</div>
+    <button onclick="showAddUser()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">+ Ajouter un utilisateur</button>
+    <button class="modal-close" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+function showAddUser(){
+  showModal(`
+    <div class="modal-title">➕ Nouvel utilisateur</div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom</label>
+      <input id="um-name" type="text" placeholder="Nom de l'utilisateur" autocomplete="off" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:14px;outline:none">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Rôle</label>
+      <select id="um-role" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:13px;outline:none">
+        <option value="Caissier">Caissier</option>
+        <option value="Serveur">Serveur</option>
+        <option value="Manager">Manager</option>
+      </select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Code PIN (4-6 chiffres)</label>
+      <input id="um-pin" type="password" placeholder="PIN" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:20px;letter-spacing:6px;text-align:center;outline:none">
+    </div>
+    <button onclick="confirmAddUser()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✓ Ajouter</button>
+    <button class="modal-close" onclick="showUserManager()">← Retour</button>
+  `);
+  setTimeout(()=>{document.getElementById('um-name')?.focus();},100);
+}
+
+function confirmAddUser(){
+  const name=(document.getElementById('um-name')?.value||'').trim();
+  const role=document.getElementById('um-role')?.value||'Caissier';
+  const pin=(document.getElementById('um-pin')?.value||'').trim();
+  if(!name){alert('Veuillez entrer un nom.');return;}
+  if(!/^\d{4,6}$/.test(pin)){alert('PIN invalide — 4 à 6 chiffres requis.');return;}
+  const id='user_'+Date.now();
+  const isManager=role==='Manager';
+  const colors=[
+    {color:'var(--blue)',bg:'rgba(74,144,217,.2)'},
+    {color:'var(--green)',bg:'rgba(61,184,122,.2)'},
+    {color:'var(--orange)',bg:'rgba(245,166,35,.2)'},
+    {color:'var(--red)',bg:'rgba(224,82,82,.2)'},
+    {color:'#a78bfa',bg:'rgba(167,139,250,.2)'},
+  ];
+  const ci=Object.keys(USERS).length%colors.length;
+  USERS[id]={id,pin,name,role,color:isManager?'var(--gold-l)':colors[ci].color,bg:isManager?'rgba(200,145,58,.2)':colors[ci].bg,isManager,canSettle:role!=='Serveur'};
+  saveUsers(USERS);
+  flash('✓ Utilisateur "'+name+'" ajouté');
+  showUserManager();
+}
+
+function editUser(uid){
+  const u=USERS[uid];
+  if(!u)return;
+  showModal(`
+    <div class="modal-title">✏️ Modifier — ${u.name}</div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom</label>
+      <input id="um-edit-name" type="text" value="${u.name}" autocomplete="off" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:14px;outline:none">
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Rôle</label>
+      <select id="um-edit-role" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:13px;outline:none">
+        <option value="Caissier"${u.role==='Caissier'?' selected':''}>Caissier</option>
+        <option value="Serveur"${u.role==='Serveur'?' selected':''}>Serveur</option>
+        <option value="Manager"${u.role==='Manager'?' selected':''}>Manager</option>
+      </select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nouveau PIN (laisser vide = pas de changement)</label>
+      <input id="um-edit-pin" type="password" placeholder="••••" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:10px;color:var(--txt);font-size:20px;letter-spacing:6px;text-align:center;outline:none">
+    </div>
+    <button onclick="confirmEditUser('${uid}')" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✓ Enregistrer</button>
+    <button class="modal-close" onclick="showUserManager()">← Retour</button>
+  `);
+  setTimeout(()=>{document.getElementById('um-edit-name')?.focus();},100);
+}
+
+function confirmEditUser(uid){
+  const u=USERS[uid];
+  if(!u)return;
+  const name=(document.getElementById('um-edit-name')?.value||'').trim();
+  const role=document.getElementById('um-edit-role')?.value||u.role;
+  const pin=(document.getElementById('um-edit-pin')?.value||'').trim();
+  if(!name){alert('Le nom ne peut pas être vide.');return;}
+  if(pin&&!/^\d{4,6}$/.test(pin)){alert('PIN invalide — 4 à 6 chiffres requis.');return;}
+  u.name=name;
+  u.role=role;
+  u.isManager=role==='Manager';
+  u.canSettle=role!=='Serveur';
+  if(u.isManager){u.color='var(--gold-l)';u.bg='rgba(200,145,58,.2)';}
+  if(pin)u.pin=pin;
+  saveUsers(USERS);
+  flash('✓ Utilisateur "'+name+'" modifié');
+  showUserManager();
+}
+
+function deleteUser(uid){
+  const u=USERS[uid];
+  if(!u)return;
+  if(uid==='manager'){alert('Impossible de supprimer le Manager principal.');return;}
+  if(!confirm('Supprimer l\'utilisateur "'+u.name+'" ?'))return;
+  delete USERS[uid];
+  saveUsers(USERS);
+  flash('✓ Utilisateur "'+u.name+'" supprimé');
+  showUserManager();
+}
+
+// ═══════════════ HISTORIQUE (session only) ═══════════════
+function showHistorique() {
+  // Show ONLY sales from the CURRENT caisse session
+  const sessionSales = currentSession?.sid
+    ? history.filter(h => h.sessionId === currentSession.sid)
+    : [];
+  if (!sessionSales.length) {
+    showModal(`<div class="modal-title">📋 Historique de session</div><div style="text-align:center;color:var(--muted);padding:20px">Aucune vente dans cette session.</div><button class="modal-close" onclick="closeModal()">Fermer</button>`);
+    return;
+  }
+  const total = sessionSales.reduce((s,h) => s + (h.g||0), 0);
+  const rows = [...sessionSales].reverse().map(h => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--div);font-size:12px">
+      <span style="color:var(--muted);width:45px">#${String(h.num).padStart(3,'0')}</span>
+      <span style="width:50px">${h.time||''}</span>
+      <span style="flex:1;font-size:10px;color:var(--muted)">${h.cliName||''}</span>
+      <span style="font-size:10px;color:var(--muted);width:55px">${h.cashier||''}</span>
+      <span style="font-weight:700;color:var(--gold-l)">${f(h.g)} ${CLIENT_CONFIG.currency}</span>
+    </div>`).join('');
+  showModal(`
+    <div class="modal-title">📋 Historique de session</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">${sessionSales.length} ventes · Total: ${f(total)} ${CLIENT_CONFIG.currency}</div>
+    <div style="max-height:350px;overflow-y:auto">${rows}</div>
+    <button class="modal-close" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+// ═══════════════ KEYBOARD PIN INPUT ═══════════════
+document.addEventListener('keydown', function(e){
+  const pinWrap = document.getElementById('pin-wrap');
+  if(!pinWrap || pinWrap.style.display === 'none') return;
+  if(e.target.closest('input,textarea,select')) return;
+  if(e.key >= '0' && e.key <= '9'){
+    e.preventDefault();
+    pinKey(e.key);
+  } else if(e.key === 'Backspace'){
+    e.preventDefault();
+    pinKey('⌫');
+  } else if(e.key === 'Escape'){
+    e.preventDefault();
+    backToUsers();
+  }
+});
+
+// ═══════════════ INPUT FOCUS FIX (Electron) ═══════════════
+document.addEventListener('mousedown', function(e){
+  const target = e.target;
+  if(target && (target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.tagName==='SELECT')){
+    setTimeout(()=>{ target.focus(); }, 0);
+    setTimeout(()=>{ target.focus(); }, 50);
+  }
+}, true);
 
 // ═══════════════ START ═══════════════
 try { render(); } catch(e) { document.body.innerHTML = '<pre style="color:red;padding:20px">ERREUR: ' + e.message + '\n' + e.stack + '</pre>'; }

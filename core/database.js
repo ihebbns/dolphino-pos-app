@@ -75,6 +75,7 @@ function runMigrations() {
       order_type TEXT NOT NULL DEFAULT 'place',
       cli_name TEXT NOT NULL DEFAULT '',
       cli_tel TEXT NOT NULL DEFAULT '',
+      session_id TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -117,6 +118,9 @@ function runMigrations() {
   if (!columnNames.has('cli_tel')) {
     db.exec("ALTER TABLE sales ADD COLUMN cli_tel TEXT NOT NULL DEFAULT ''");
   }
+  if (!columnNames.has('session_id')) {
+    db.exec("ALTER TABLE sales ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
+  }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_sales_business_date ON sales(business_date)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_sales_num ON sales(num)');
@@ -148,6 +152,7 @@ function normalizeSaleInput(raw = {}) {
     type: raw.type || raw.orderType || 'place',
     cliName: raw.cliName || '',
     cliTel: raw.cliTel || '',
+    sessionId: raw.sessionId || '',
   };
 }
 
@@ -179,6 +184,7 @@ function serializeSaleRow(row) {
     type: row.order_type || 'place',
     cliName: row.cli_name || '',
     cliTel: row.cli_tel || '',
+    sessionId: row.session_id || '',
     createdAt: row.created_at,
   };
 }
@@ -202,6 +208,11 @@ async function initDatabase(userDataPath) {
     SQL = await initSqlEngine();
 
     dbPath = path.join(userDataPath, 'servio-pos.sqlite');
+    // If a syncKey-specific DB exists, use that (per-client isolation)
+    if (global.__servioSyncKey) {
+      const safeKey = global.__servioSyncKey.replace(/[^a-zA-Z0-9\-]/g, '').slice(0, 30);
+      dbPath = path.join(userDataPath, 'servio-pos-' + safeKey + '.sqlite');
+    }
     if (fs.existsSync(dbPath)) {
       const fileBuffer = fs.readFileSync(dbPath);
       db = new SQL.Database(new Uint8Array(fileBuffer));
@@ -252,8 +263,8 @@ async function saveSale(userDataPath, rawSale) {
   db.run(
     `INSERT INTO sales (
       num, business_date, date, time, items_json, sub, disc, discount, grand,
-      pay_method, received, monnaie, cashier, order_type, cli_name, cli_tel
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      pay_method, received, monnaie, cashier, order_type, cli_name, cli_tel, session_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       sale.num,
       sale.businessDate,
@@ -271,6 +282,7 @@ async function saveSale(userDataPath, rawSale) {
       sale.type,
       sale.cliName,
       sale.cliTel,
+      sale.sessionId,
     ]
   );
   persistDatabase();

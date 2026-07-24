@@ -25,6 +25,7 @@
     "appId": "tn.servio.pos",
     "productName": "Servio POS",
     "copyright": "© 2025 Servio OS",
+    "asar": true,
     "directories": {
       "output": "dist"
     },

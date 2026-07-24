@@ -10,7 +10,7 @@
  *   Body: { name, city, logo, logoLetter, tagline, phone, currency,
  *           syncKey, managerName, managerPin, cashierName, cashierPin,
  *           menu (optional), zone1Cats, zone2Cats, boissonCats,
- *           businessType ('fastfood'|'cafe'), tableCount, printEnabled,
+ *           businessType ('fastfood'|'cafe'|'retail'), tableCount, printEnabled,
  *           iconBase64 (optional) }
  *   Returns: { ok, exePath, safeName } or { ok:false, error }
  *
@@ -33,6 +33,21 @@ const CORE_DIR    = path.join(POS_DIR, 'core');
 const PKG_JSON    = path.join(POS_DIR, 'package.json');
 const TEMPLATE    = path.join(POS_DIR, 'templates', 'index-fastfood.html');
 const TEMPLATE_CAFE = path.join(POS_DIR, 'templates', 'index-cafe.html');
+const TEMPLATE_RETAIL = path.join(POS_DIR, 'templates', 'index-retail.html');
+// Single universal template — all features, toggled per client via MODULES.
+const TEMPLATE_UNIVERSAL = path.join(POS_DIR, 'templates', 'index-universal.html');
+
+// Default module set (matches the universal template's CLIENT_CONFIG.modules)
+const DEFAULT_MODULES = {
+  tables:false, barcode:false, credit:true, stockTracking:true,
+  poleDisplay:true, kitchenTickets:true, printEnabled:true, dashboard:true, menuManage:true,
+};
+// Convenience presets so an old businessType still produces sensible modules
+const PRESET_MODULES = {
+  cafe:     { tables:true,  barcode:false, kitchenTickets:true  },
+  fastfood: { tables:false, barcode:false, kitchenTickets:true  },
+  retail:   { tables:false, barcode:true,  kitchenTickets:false },
+};
 
 let building   = false;
 let lastBuild  = null;
@@ -51,6 +66,16 @@ function replaceField(html, fieldName, newValue) {
 function replaceArrayField(html, fieldName, arr) {
   const re = new RegExp(`(${fieldName}:\\s*)\\[[^\\]]*\\]`);
   return html.replace(re, `$1${JSON.stringify(arr)}`);
+}
+
+// Replace the whole `modules: { ... }` block inside CLIENT_CONFIG.
+// The modules object is a flat set of booleans (no nested braces).
+function replaceModulesBlock(html, modules) {
+  const body = Object.entries(modules)
+    .map(([k, v]) => `    ${k}: ${v ? 'true' : 'false'},`)
+    .join('\n');
+  const re = /modules:\s*\{[^}]*\}/;
+  return html.replace(re, `modules: {\n${body}\n  }`);
 }
 
 function replaceMenu(html, menuObj) {
@@ -222,36 +247,38 @@ function generateSimpleIcon(letter, name) {
   }
 }
 
-// ── Build Logic ───────────────────────────────────────
-function buildClient(data) {
+// ── Generate client index.html from the universal template (pure, testable) ──
+function generateClientHtml(data) {
   const {
     name, city = 'Tunisie', logo = '🍽️', logoLetter, tagline,
     phone = '+216 52 050 581', currency = 'DT',
     syncKey, managerName = 'Manager', managerPin = '1234',
     cashierName = 'Caissier', cashierPin = '0000',
     menu, zone1Cats, zone2Cats, boissonCats,
-    iconBase64,
-    businessType = 'fastfood', tableCount = 12, printEnabled = true
+    businessType = 'fastfood', tableCount = 12,
+    modules, sections
   } = data;
 
   if (!name) throw new Error('name is required');
   if (!syncKey) throw new Error('syncKey (API key) is required');
 
-  // Choose template based on business type
-  const templateFile = businessType === 'cafe' ? TEMPLATE_CAFE : TEMPLATE;
+  // Single universal template — features are toggled per client via MODULES.
+  const templateFile = TEMPLATE_UNIVERSAL;
   if (!fs.existsSync(templateFile)) throw new Error(`Template not found: ${templateFile}`);
 
-  const safeName    = safeFilename(name);
-  const letter      = logoLetter || name.charAt(0).toUpperCase();
-  const tag         = tagline || `${name} — POS Pro`;
-  const clientDir   = path.join(CLIENTS_DIR, safeName);
-  const clientHtml  = path.join(clientDir, 'index.html');
-  const outputDir   = path.join(POS_DIR, 'dist_clients', safeName);
+  // Resolve the final module set: defaults ← businessType preset ← explicit modules.
+  const finalModules = Object.assign(
+    {}, DEFAULT_MODULES,
+    PRESET_MODULES[businessType] || {},
+    (modules && typeof modules === 'object') ? modules : {}
+  );
+  // Legacy top-level printEnabled flag still honored — only when explicitly provided,
+  // so it never clobbers an explicit modules.printEnabled.
+  if (typeof data.printEnabled === 'boolean') finalModules.printEnabled = data.printEnabled;
 
-  // Step 1: Create client folder
-  if (!fs.existsSync(clientDir)) fs.mkdirSync(clientDir, { recursive: true });
+  const letter = logoLetter || name.charAt(0).toUpperCase();
+  const tag    = tagline || `${name} — POS Pro`;
 
-  // Step 2: Generate client index.html from template
   let html = fs.readFileSync(templateFile, 'utf8');
   html = replaceField(html, 'name',        name.toUpperCase());
   html = replaceField(html, 'tagline',     tag);
@@ -266,10 +293,13 @@ function buildClient(data) {
   html = replaceField(html, 'cashierName', cashierName);
   html = replaceField(html, 'cashierPin',  cashierPin);
 
-  // Café-specific fields
-  if (businessType === 'cafe') {
-    html = html.replace(/(tableCount:\s*)\d+/, `$1${tableCount}`);
-    html = html.replace(/(printEnabled:\s*)(true|false)/, `$1${printEnabled}`);
+  // Inject the module flags (turns features on/off per client)
+  html = replaceModulesBlock(html, finalModules);
+
+  // Table settings (used when modules.tables = true)
+  html = html.replace(/(tableCount:\s*)\d+/, `$1${parseInt(tableCount) || 12}`);
+  if (sections && Array.isArray(sections) && sections.length) {
+    html = replaceArrayField(html, 'sections', sections);
   }
 
   // Replace kitchen zones if provided
@@ -290,6 +320,24 @@ function buildClient(data) {
     html = replaceMenu(html, menu);
   }
 
+  return { html, finalModules };
+}
+
+// ── Build Logic ───────────────────────────────────────
+function buildClient(data) {
+  const { name, iconBase64 } = data;
+  if (!name) throw new Error('name is required');
+
+  const safeName    = safeFilename(name);
+  const clientDir   = path.join(CLIENTS_DIR, safeName);
+  const clientHtml  = path.join(clientDir, 'index.html');
+  const outputDir   = path.join(POS_DIR, 'dist_clients', safeName);
+
+  // Step 1: Create client folder
+  if (!fs.existsSync(clientDir)) fs.mkdirSync(clientDir, { recursive: true });
+
+  // Step 2: Generate client index.html from the universal template
+  const { html } = generateClientHtml(data);
   fs.writeFileSync(clientHtml, html, 'utf8');
 
   // Step 3: Copy to root for electron-builder
@@ -431,16 +479,22 @@ const server = http.createServer(async (req, res) => {
   jsonResponse(res, 404, { error: 'Not found' });
 });
 
-server.listen(PORT, () => {
-  console.log(`\n╔════════════════════════════════════════════╗`);
-  console.log(`║  ⚡ SERVIO OS — Build Server               ║`);
-  console.log(`║  🌐 http://localhost:${PORT}                  ║`);
-  console.log(`╚════════════════════════════════════════════╝\n`);
-  console.log(`  → Ouvrir http://localhost:${PORT} dans votre navigateur\n`);
-  console.log(`Endpoints:`);
-  console.log(`  GET  /        — Interface graphique (Builder UI)`);
-  console.log(`  POST /build   — Build a client EXE`);
-  console.log(`  GET  /status  — Check build status`);
-  console.log(`  GET  /clients — List existing clients\n`);
-  console.log(`Waiting for build requests...\n`);
-});
+// Export the pure generation helpers for testing without starting the server.
+module.exports = { generateClientHtml, replaceModulesBlock, replaceField, replaceArrayField, DEFAULT_MODULES, PRESET_MODULES };
+
+// Only start the HTTP server when run directly (not when required by a test).
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`\n╔════════════════════════════════════════════╗`);
+    console.log(`║  ⚡ SERVIO OS — Build Server               ║`);
+    console.log(`║  🌐 http://localhost:${PORT}                  ║`);
+    console.log(`╚════════════════════════════════════════════╝\n`);
+    console.log(`  → Ouvrir http://localhost:${PORT} dans votre navigateur\n`);
+    console.log(`Endpoints:`);
+    console.log(`  GET  /        — Interface graphique (Builder UI)`);
+    console.log(`  POST /build   — Build a client EXE`);
+    console.log(`  GET  /status  — Check build status`);
+    console.log(`  GET  /clients — List existing clients\n`);
+    console.log(`Waiting for build requests...\n`);
+  });
+}

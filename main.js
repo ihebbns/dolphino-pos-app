@@ -38,6 +38,17 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
+    mainWindow.webContents.focus();
+  });
+
+  // ── INPUT FOCUS FIX ──────────────────────────────────────────────────
+  // Electron on Windows can lose keyboard focus in the renderer after
+  // dialogs, print windows, or BrowserWindow blur/focus cycles.
+  // Re-assert webContents focus whenever the window regains focus.
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.focus();
+    }
   });
 
   if (process.platform === 'win32') {
@@ -139,6 +150,7 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
     width: 302, // 80mm at 96dpi
     height: 800,
     show: false,
+    focusable: false, // Prevent print window from stealing focus
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
 
@@ -158,6 +170,11 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
           setTimeout(() => {
             printWin.close();
             try { fs.unlinkSync(tmpFile); } catch(e) {}
+            // Re-focus main window after print to restore keyboard input
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.focus();
+              mainWindow.webContents.focus();
+            }
           }, 500);
         }
       );
@@ -240,6 +257,28 @@ ipcMain.handle('db-close-session', async (_event, id, data) => {
 ipcMain.handle('db-get-sessions', async () => {
   try { return await getSessions(userDataPath()); }
   catch(e) { return []; }
+});
+
+// ── OTA UPDATE (replace index.html and reload) ────────────────────────
+ipcMain.handle('ota-apply-update', async (_event, html) => {
+  try {
+    const indexPath = path.join(__dirname, 'index.html');
+    // Backup current version
+    const backupPath = path.join(__dirname, 'index.html.bak');
+    if (fs.existsSync(indexPath)) {
+      fs.copyFileSync(indexPath, backupPath);
+    }
+    // Write new HTML
+    fs.writeFileSync(indexPath, html, 'utf8');
+    // Reload the window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadFile(indexPath);
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('[OTA] Update failed:', e.message);
+    return { ok: false, error: e.message };
+  }
 });
 
 app.whenReady().then(() => {

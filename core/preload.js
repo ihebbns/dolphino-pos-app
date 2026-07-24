@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSession:    (session)     => ipcRenderer.invoke('db-save-session', session),
   closeSession:   (id, data)    => ipcRenderer.invoke('db-close-session', id, data),
   getSessions:    ()            => ipcRenderer.invoke('db-get-sessions'),
+  requestFocusRecovery: ()      => ipcRenderer.send('request-focus-recovery'),
+  poleListPorts:  ()            => ipcRenderer.invoke('pole-list-ports'),
+  poleWrite:      (opts)        => ipcRenderer.invoke('pole-write', opts),
 });

@@ -569,7 +569,7 @@ const CLIENT_CONFIG = {
 
   // ── Sync / Dashboard ──────────────────────────────────
   syncEnabled: true,
-  syncUrl:     'https://dolphino-saas.vercel.app/api/sync',
+  syncUrl:     'https://servio.tn/api/sync',
   syncKey:     'DOLPH-TEST-KEY-001',    // ← CHANGE THIS per client
 
   // ── Users / PINs ──────────────────────────────────────
@@ -712,14 +712,22 @@ const STORE_KEY='dolphino-pos-state-v2';
 // ═══════════════════════════════════════════════════
 const STOCK_KEY='dolphino-drink-stock-v1';
 
-// Dynamically get all drink IDs from Boisson category
+// Every product in the menu is eligible for stock tracking — not just drinks.
 function getDrinkIDs(){
-  return ((MENU['Boisson']||{items:[]}).items).map(it=>it.id);
+  // Get ALL items from ALL categories for stock tracking
+  const ids=[];
+  Object.values(MENU).forEach(cat=>cat.items.forEach(it=>ids.push(it.id)));
+  return ids;
 }
 
-// Is this item a drink? Check by category stored on item OR by ID in Boisson
+// Does this line deplete stock? Driven by the per-product `tracked` flag, so a
+// product the owner never counts is left alone. Combined with the guard in
+// decreaseStock() (a stock number must already exist), nothing depletes until
+// the owner has actually set a quantity for that product.
 function isDrinkItem(it){
-  return it.cat==='Boisson' || getDrinkIDs().includes(it.id);
+  // Only tracked items decrease stock
+  const menuItem=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);
+  return menuItem?menuItem.tracked!==false:false;
 }
 
 function loadStock(){
@@ -1795,7 +1803,7 @@ function autoPrintKitchen(od){
 
 // ═══════════════ RECEIPT ═══════════════
 function showReceipt(od){
-  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile'};
+  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',credit:'Crédit'};
   const tl={place:'🏠 Sur place',take:'🥡 Emporter',del:'🛵 Livraison'};
   const lines=od.items.map(it=>`
     <div class="rr"><span>${it.qty}x ${it.name}${it.variant?' ('+it.variant+')':''}</span><span>${f(it.p*it.qty)} DT</span></div>
@@ -1822,7 +1830,7 @@ function showReceipt(od){
     ${od.d>0?`<div class="rr" style="color:var(--red)"><span>Remise (${od.disc}%)</span><span>-${f(od.d)} DT</span></div>`:''}
     <div class="rr rtot"><span>TOTAL</span><span>${f(od.g)} DT</span></div>
     <div class="rdiv"></div>
-    <div class="rr"><span>Paiement</span><span>${pm[od.payMode]}</span></div>
+    <div class="rr"><span>Paiement</span><span>${pm[od.payMode]||od.payMode||'—'}</span></div>
     ${od.payMode==='cash'?`<div class="rr"><span>Reçu</span><span>${f(od.r)} DT</span></div><div class="rr"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
     <div class="rdiv"></div>
     <div class="rc" style="font-size:10px;color:var(--muted)">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez ${CLIENT_CONFIG.name}</div>
@@ -1832,7 +1840,7 @@ function showReceipt(od){
 
 function doPrint(){
   if(!lastOrderData)return;
-  const pm={cash:'Espèces',card:'Carte',mob:'Mobile'};
+  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',credit:'Crédit'};
   const tl={place:'Sur place',take:'Emporter',del:'Livraison'};
   const od=lastOrderData;
   const lines=od.items.map(it=>
@@ -1860,7 +1868,7 @@ function doPrint(){
   ${od.d>0?`<div class="r"><span>Remise (${od.disc}%)</span><span>-${f(od.d)} DT</span></div>`:''}
   <div class="r tot"><span>TOTAL</span><span>${f(od.g)} DT</span></div>
   <div class="d"></div>
-  <div class="r"><span>Paiement</span><span>${pm[od.payMode]}</span></div>
+  <div class="r"><span>Paiement</span><span>${pm[od.payMode]||od.payMode||'—'}</span></div>
   ${od.payMode==='cash'?`<div class="r"><span>Reçu</span><span>${f(od.r)} DT</span></div><div class="r"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
   <div class="d"></div>
   <div class="c sm">★ ★ ★ ★ ★<br>Merci pour votre visite !<br>Revenez bientôt chez ${CLIENT_CONFIG.name}</div>
@@ -1945,7 +1953,7 @@ function showDash(){
   if(!hist.length){
     tbl.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Aucune commande</td></tr>`;
   }else{
-    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile'};
+    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',credit:'📒 Crédit'};
     tbl.innerHTML=[...hist].reverse().map(h=>`
       <tr>
         <td>#${String(h.num).padStart(3,'0')}</td>
@@ -1953,7 +1961,7 @@ function showDash(){
         <td><span class="type-badge tb-${h.type}">${{place:'🏠 Place',take:'🥡 Emporter',del:'🛵 Livraison'}[h.type]}</span></td>
         <td>${h.items.length} art.</td>
         <td style="font-weight:700;color:var(--gold-l)">${f(h.g)} DT</td>
-        <td>${pm[h.payMode]}</td>
+        <td>${pm[h.payMode]||h.payMode||'—'}</td>
       </tr>`).join('');
   }
   document.getElementById('dash-modal').style.display='flex';

@@ -4,3 +4,21 @@ dist/
 fix-icon.js
 fix-chapati.js
 make-ico.js
+
+# ── Build output ───────────────────────────────────────────────
+# Each client EXE is ~86 MB. These are build artefacts, never source.
+dist_clients/
+_temp_install/
+
+# ── SECRETS — never commit ─────────────────────────────────────
+# SERVIO_CREDENTIALS.txt holds DATABASE_URL, JWT_SECRET, ADMIN_SECRET_KEY,
+# per-client API keys and the manager/cashier PINs.
+SERVIO_CREDENTIALS.txt
+*CREDENTIALS*
+.env
+.env.local
+
+# ── Scratch / throwaway tooling ────────────────────────────────
+_scratch_*.txt
+_*.cjs
+_build-client.js
