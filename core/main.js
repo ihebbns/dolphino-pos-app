@@ -180,9 +180,19 @@ function resolveClientIndex() {
   // First, read the syncKey from the BUILT-IN index.html to init OTA paths per client
   const builtInIndex = path.join(__dirname, '..', 'index.html');
   try {
-    const content = fs.readFileSync(builtInIndex, 'utf8');
-    const keyMatch = content.match(/syncKey:\s*'([^']+)'/);
-    if (keyMatch) initOtaPaths(keyMatch[1]);
+    // Read only the head of the file. index.html is ~2 MB and this runs on the
+    // critical start-up path (loadFile calls this), so a full readFileSync plus
+    // a regex across 2 MB delayed first paint for nothing: CLIENT_CONFIG — and
+    // therefore syncKey — sits within the first few KB.
+    const fd = fs.openSync(builtInIndex, 'r');
+    try {
+      const buf = Buffer.alloc(65536);
+      const read = fs.readSync(fd, buf, 0, buf.length, 0);
+      const keyMatch = buf.slice(0, read).toString('utf8').match(/syncKey:\s*'([^']+)'/);
+      if (keyMatch) initOtaPaths(keyMatch[1]);
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch (e) {}
 
   // Priority 1: OTA updated version for THIS client (keyed by syncKey)
@@ -238,6 +248,14 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
+    // Maximize BEFORE showing. This used to run immediately after createWindow,
+    // and on Windows maximizing a hidden window implicitly SHOWS it — so an
+    // empty white window appeared instantly and sat there for seconds until the
+    // renderer painted. Doing it here keeps the window invisible until there is
+    // something to look at, which is the whole point of show:false.
+    if (process.platform === 'win32') {
+      mainWindow.maximize();
+    }
     mainWindow.show();
     mainWindow.focus();
     mainWindow.webContents.focus();
@@ -245,10 +263,6 @@ function createWindow() {
 
   // (Focus recovery on window activation is registered further down, in the
   // FOCUS RECOVERY section, so all focus handling lives in one place.)
-
-  if (process.platform === 'win32') {
-    mainWindow.maximize();
-  }
 
   const template = [
     {
@@ -723,21 +737,43 @@ ipcMain.handle('db-get-sessions', async () => {
 });
 
 app.whenReady().then(() => {
-  // Read syncKey from built-in index.html to isolate database per client
+  // ── Startup order matters ────────────────────────────────────────────
+  // Everything below used to run BEFORE createWindow(), on the main process,
+  // synchronously. Between reading the whole index.html, compiling the sql.js
+  // WASM module and compiling the drawer service's PowerShell, first paint was
+  // delayed by seconds. The window is created first now, and the heavy work is
+  // either bounded or deferred until after the UI is on screen.
+
+  // Read the syncKey to isolate the database per client. index.html is ~2 MB, so
+  // read only the head of it: CLIENT_CONFIG sits at the top and a full
+  // readFileSync of 2 MB plus a regex over it blocked start-up for no reason.
   try {
     const builtInIndex = path.join(__dirname, '..', 'index.html');
-    const content = fs.readFileSync(builtInIndex, 'utf8');
-    const keyMatch = content.match(/syncKey:\s*'([^']+)'/);
-    if (keyMatch) global.__servioSyncKey = keyMatch[1];
+    const fd = fs.openSync(builtInIndex, 'r');
+    try {
+      const buf = Buffer.alloc(65536);            // 64 KB is far past CLIENT_CONFIG
+      const read = fs.readSync(fd, buf, 0, buf.length, 0);
+      const keyMatch = buf.slice(0, read).toString('utf8').match(/syncKey:\s*'([^']+)'/);
+      if (keyMatch) global.__servioSyncKey = keyMatch[1];
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch(e) {}
 
-  getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
+  // Window first, so the renderer can start parsing and painting immediately.
   createWindow();
 
-  // Warm the persistent cash-drawer service so the FIRST Encaisser tap after
-  // the initial ~1-3s compile is instant. Non-blocking; the one-shot fallback
-  // covers any kick that arrives before this finishes warming up.
-  startDrawerService();
+  // SQLite (sql.js WASM) compiles on the main process and is CPU-bound. Kicking
+  // it off before the window meant it competed with window creation. The
+  // renderer waits on getDbStatus() anyway and tolerates it arriving late.
+  setImmediate(() => {
+    getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
+  });
+
+  // Warm the persistent cash-drawer service so the FIRST Encaisser tap is
+  // instant. Its PowerShell compile takes 1-3s, so hold it back until the UI is
+  // visible; the one-shot fallback covers any kick arriving before it is warm.
+  setTimeout(startDrawerService, 4000);
 
   // ── FOCUS RECOVERY (Electron keyboard fix) ──────────────────────────
   // Problem: After printing, cash drawer, or child windows, Electron loses
