@@ -845,23 +845,92 @@ function saveStock(stock){
 }
 
 // ── Sync stock to server for dashboard display ──
+// ── Stock sync: METADATA ONLY ─────────────────────────────────────────────
+// This used to push ABSOLUTE quantities, which meant last-writer-wins: a second
+// till, or this one flushing an offline queue, silently erased sales. It also
+// recorded no movement, so a quantity could change with nobody knowing who did
+// it or why.
+//
+// Quantity now moves only through traced channels:
+//   a sale          -> negative 'sale' delta      (queueStockDeltas)
+//   a manager count -> absolute 'count' movement  (sendStockCount)
+// The server derives the quantity as "latest count + deltas recorded after it",
+// so two tills can no longer clobber each other.
 async function syncStockToServer(stock){
   if(!SYNC_ENABLED) return;
   try{
     const items = [];
-    const drinkItems = []; Object.keys(MENU).forEach(c=>MENU[c].items.forEach(it=>{if(it.tracked!==false)drinkItems.push({...it,_cat:c});}));
-    for(const it of drinkItems){
-      if(typeof stock[it.id]==='number'){
-        items.push({ item_id: it.id, item_name: it.name, item_emoji: it.e||'🥤', quantity: stock[it.id] });
-      }
-    }
+    Object.keys(MENU).forEach(c=>MENU[c].items.forEach(it=>{
+      if(it.tracked===false) return;
+      // No `quantity` on purpose. The server ignores it on this route anyway.
+      items.push({ item_id: it.id, item_name: it.name, item_emoji: it.e||'📦', category: c });
+    }));
     if(items.length === 0) return;
     await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
       body: JSON.stringify({ items })
     });
-  }catch(e){ /* silent — stock sync is not critical */ }
+  }catch(e){ /* silent — metadata sync is not critical */ }
+}
+
+// ── Sold quantities leave as signed deltas, queued so none is lost offline ──
+const STOCK_DELTA_KEY = 'servio-stock-deltas-v1';
+function queueStockDeltas(deltas){
+  if(!SYNC_ENABLED || !deltas || !deltas.length) return;
+  try{
+    const q = JSON.parse(localStorage.getItem(STOCK_DELTA_KEY) || '[]');
+    for(const d of deltas) q.push(d);
+    localStorage.setItem(STOCK_DELTA_KEY, JSON.stringify(q));
+  }catch(e){}
+  flushStockDeltas();
+}
+async function flushStockDeltas(){
+  if(!SYNC_ENABLED) return;
+  let q = [];
+  try{ q = JSON.parse(localStorage.getItem(STOCK_DELTA_KEY) || '[]'); }catch(e){ return; }
+  if(!q.length) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      // Every line carries a uid, so replaying a queued sale cannot deduct twice,
+      // and a client timestamp so late arrivals still sequence correctly.
+      body: JSON.stringify({
+        sold: q,
+        actor: (typeof currentUser!=='undefined' && currentUser && USERS[currentUser] && USERS[currentUser].name) || '',
+        sessionId: (typeof currentSession!=='undefined' && currentSession && currentSession.sid) || '',
+      })
+    });
+    const data = await res.json();
+    if(data && data.ok) localStorage.removeItem(STOCK_DELTA_KEY);
+  }catch(e){ /* offline — retried on reconnect */ }
+}
+
+// ── A manager correcting a count: absolute, attributed, reasoned ────────────
+async function sendStockCount(itemId, qty, reason){
+  if(!SYNC_ENABLED) return;
+  const it = Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===itemId);
+  try{
+    await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({
+        mode: 'count',
+        reason: reason || 'Inventaire',
+        actor: (typeof currentUser!=='undefined' && currentUser && USERS[currentUser] && USERS[currentUser].name) || '',
+        sessionId: (typeof currentSession!=='undefined' && currentSession && currentSession.sid) || '',
+        items: [{
+          item_id: itemId,
+          item_name: it ? it.name : itemId,
+          item_emoji: it ? (it.e||'📦') : '📦',
+          quantity: qty,
+          uid: 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+          ts: new Date().toISOString(),
+        }]
+      })
+    });
+  }catch(e){ /* offline — the local value stands until the next count */ }
 }
 
 // ── Web-owned COST (entered on the dashboard, flows web → POS) ───────────────
@@ -891,14 +960,24 @@ async function pullCloudCosts(){
 }
 function decreaseStock(soldItems){
   const stock=loadStock();
+  const deltas=[];
   for(const it of soldItems){
     if(isDrinkItem(it)){
       if(typeof stock[it.id]==='number'){
-        stock[it.id]=Math.max(0,stock[it.id]-(it.qty||1));
+        const q = it.qty||1;
+        stock[it.id]=Math.max(0,stock[it.id]-q);
+        // Signed delta with its own id, so the server records a traceable
+        // 'sale' movement and a replay cannot deduct it twice.
+        deltas.push({
+          item_id: it.id, qty: q,
+          uid: 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2,7) + '_' + it.id,
+          ts: new Date().toISOString(),
+        });
       }
     }
   }
   saveStock(stock);
+  queueStockDeltas(deltas);
 }
 function getStockDisplay(){
   return loadStock();
@@ -1443,6 +1522,7 @@ window.addEventListener('online', () => {
   flushClotureQueue();
   flushMenuPush();
   flushCreditsPush();
+  flushStockDeltas();
   try{ sendDrawerLog(); }catch(e){}
   flash('☁ Synchronisation en cours...');
 });
@@ -2663,7 +2743,6 @@ function showDash(){
     <div class="kpi"><div class="kpi-val">${f(avg)} DT</div><div class="kpi-lbl">Ticket moyen</div></div>
     <div class="kpi"><div class="kpi-val">${f(cash)} DT</div><div class="kpi-lbl">Espèces</div></div>
     <div class="kpi"><div class="kpi-val">${f(total-cash)} DT</div><div class="kpi-lbl">Carte / Mobile</div></div>
-    <div class="kpi"><div class="kpi-val" style="color:var(--green)">${f(hist.reduce((a,h)=>a+(h.margin||0),0))} DT</div><div class="kpi-lbl">📈 Bénéfice brut</div></div>
     <div class="kpi"><div class="kpi-val" style="font-size:${topItem&&topItem[0].length>15?'14px':'24px'}">${topItem?topItem[0]:'—'}</div><div class="kpi-lbl">Article le plus vendu</div>${topItem?`<div style="font-size:12px;color:var(--gold);margin-top:3px;font-weight:600">vendu ${topItem[1]} fois</div>`:''}</div>`;
 
   // ── STOCK (all tracked items — drinks OR retail products) ──
@@ -2707,15 +2786,37 @@ function showDash(){
 }
 
 function setDrinkStock(id){
+  // Only a manager may change a counted quantity, and never without a reason.
+  // An unexplained correction is the usual way a shortage gets hidden, so the
+  // reason is mandatory and the movement is attributed to whoever is logged in.
+  if(!currentUser || !USERS[currentUser] || !USERS[currentUser].isManager){
+    flash('Accès réservé au Manager.');
+    return;
+  }
   const inp = document.getElementById('stock-inp-'+id);
   const val = parseInt(inp.value);
   if(isNaN(val)||val<0){alert('Quantité invalide.');return;}
+
   const stock = loadStock();
+  const before = typeof stock[id]==='number' ? stock[id] : 0;
+  if(val === before){ inp.value=''; flash('Quantité inchangée'); return; }
+
+  const diff = val - before;
+  const reason = (prompt(
+    'Motif du changement de stock\n' +
+    before + ' → ' + val + '  (' + (diff>0?'+':'') + diff + ')\n\n' +
+    'Ex : inventaire, casse, perte, livraison'
+  ) || '').trim();
+  if(!reason){ flash('Motif obligatoire — aucun changement'); return; }
+
   stock[id] = val;
   saveStock(stock);
+  // Recorded as a physical count: the server freezes the écart against what it
+  // expected, so the difference stays visible in the web audit trail forever.
+  sendStockCount(id, val, reason);
   inp.value='';
-  flash('✓ Stock mis à jour');
-  showDash(); // refresh
+  flash('✓ Stock ' + before + ' → ' + val + ' (' + reason + ')');
+  showDash();
 }
 
 // Manager-supplied correction for a legacy session whose opening float could not
@@ -3051,8 +3152,7 @@ function showOrderDetail(idx){
       ${od.d>0?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--red);margin-bottom:4px"><span>Remise (${od.disc}%)</span><span>-${f(od.d)} DT</span></div>`:''}
       <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:6px;border-top:1px solid var(--div)"><span>TOTAL</span><span style="color:var(--gold-l)">${f(od.g)} DT</span></div>
       ${od.payMode==='cash'?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px"><span>Reçu</span><span>${f(od.r)} DT</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--green)"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
-      ${od.margin?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--green);margin-top:6px"><span>📈 Marge</span><span>${f(od.margin)} DT</span></div>`:''}
-    </div>
+      </div>
     <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
   `);
 }
