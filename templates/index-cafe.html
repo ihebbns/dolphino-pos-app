@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>POS Pro — Café & Restaurant</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fonts intentionally NOT loaded from the network: a render-blocking
+     stylesheet delays first paint, and the window stays hidden until
+     'ready-to-show'. On a till with no internet that meant a long blank
+     start-up. System fonts below, so the UI paints immediately. -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -21,7 +24,7 @@ body.light{
   --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;--purple:#7B4FB0;
   --shadow:0 4px 16px rgba(0,0,0,.08);
 }
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
+body{font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
 input,textarea,select,button{font-family:inherit}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 ::-webkit-scrollbar{width:4px}
@@ -36,8 +39,8 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* ── HEADER ── */
 #hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:50px;flex-shrink:0}
 .logo{display:flex;align-items:center;gap:8px}
-.logo-circle{width:32px;height:32px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--gold)}
-.logo-name{font-family:'Playfair Display',serif;font-size:17px;color:var(--gold-l)}
+.logo-circle{width:32px;height:32px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-size:15px;font-weight:700;color:var(--gold)}
+.logo-name{font-family:Georgia,'Times New Roman',serif;font-size:17px;color:var(--gold-l)}
 .logo-sub{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
 #clock{font-size:18px;font-weight:600}
 #clock-date{font-size:10px;color:var(--muted);text-align:center}
@@ -149,7 +152,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 #login{position:fixed;inset:0;background:radial-gradient(circle at 30% 20%,rgba(200,145,58,.08),transparent 55%),var(--bg);z-index:900;display:flex;align-items:center;justify-content:center}
 .login-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:36px 30px;width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:scaleIn .35s cubic-bezier(.2,.9,.3,1.1)}
 .login-logo{font-size:44px;margin-bottom:4px}
-.login-brand{font-family:'Playfair Display',serif;font-size:26px;color:var(--gold-l);letter-spacing:2px}
+.login-brand{font-family:Georgia,'Times New Roman',serif;font-size:26px;color:var(--gold-l);letter-spacing:2px}
 .login-sub{font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:24px}
 .user-card{background:var(--card);border:2px solid var(--div);border-radius:10px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:all .15s;margin-bottom:8px}
 .user-card:hover{border-color:var(--gold);background:var(--card-h);transform:translateY(-1px)}
@@ -191,7 +194,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 </style>
 </head>
 <body>
-<div id="remote-lock"><div class="lock-box"><div style="font-size:52px;margin-bottom:10px">🔒</div><div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--red);margin-bottom:12px">Application Suspendue</div><div id="lock-msg" style="font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-line">Contactez le développeur.</div></div></div>
+<div id="remote-lock"><div class="lock-box"><div style="font-size:52px;margin-bottom:10px">🔒</div><div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;color:var(--red);margin-bottom:12px">Application Suspendue</div><div id="lock-msg" style="font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-line">Contactez le développeur.</div></div></div>
 <div id="login"></div>
 <header id="hdr" style="display:none"></header>
 <div id="main" style="display:none"></div>
@@ -1058,7 +1061,7 @@ function showOpenSession() {
   modals.innerHTML = `<div class="session-overlay" onclick="if(event.target===this)closeSessionModal()">
     <div class="session-box">
       <div style="font-size:40px;margin-bottom:8px">💰</div>
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);margin-bottom:6px">Ouverture de Caisse</div>
+      <div style="font-family:Georgia,'Times New Roman',serif;font-size:18px;color:var(--gold-l);margin-bottom:6px">Ouverture de Caisse</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:18px">Caissier : <strong>${user.name||'—'}</strong></div>
       <div style="margin-bottom:12px"><input id="fond-inp" type="number" step="0.5" placeholder="0.000" style="width:100%;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px;color:var(--txt);font-size:20px;font-weight:700;text-align:center;outline:none" autocomplete="off"></div>
       <button onclick="confirmOpenSession()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">✓ Ouvrir la caisse</button>

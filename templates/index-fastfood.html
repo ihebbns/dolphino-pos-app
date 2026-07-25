@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title id="page-title">POS Pro — by Servio ⚡</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fonts intentionally NOT loaded from the network: a render-blocking
+     stylesheet delays first paint, and the window stays hidden until
+     'ready-to-show'. On a till with no internet that meant a long blank
+     start-up. System fonts below, so the UI paints immediately. -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -20,7 +23,7 @@ body.light{
   --txt:#1A1208;--muted:#8A7A6A;--div:#DDD5C5;
   --green:#2A8A5A;--red:#C04040;--blue:#2A70B8;--orange:#C06818;
 }
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
+body{font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
 input,textarea,select{font-family:inherit;-webkit-user-select:text;user-select:text;}
 button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-color:transparent;}
 
@@ -38,7 +41,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 #login-screen{position:fixed;inset:0;background:radial-gradient(circle at 30% 20%,rgba(200,145,58,.10),transparent 55%),radial-gradient(circle at 80% 85%,rgba(74,144,217,.06),transparent 50%),var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;}
 .login-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:38px 32px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(200,145,58,.05);animation:scaleIn .4s cubic-bezier(.2,.9,.3,1.1);}
 .login-logo{font-size:46px;margin-bottom:4px;filter:drop-shadow(0 4px 14px rgba(200,145,58,.35));animation:fadeInUp .5s ease both;}
-.login-brand{font-family:'Playfair Display',serif;font-size:27px;color:var(--gold-l);letter-spacing:2px;animation:fadeInUp .5s .05s ease both;}
+.login-brand{font-family:Georgia,'Times New Roman',serif;font-size:27px;color:var(--gold-l);letter-spacing:2px;animation:fadeInUp .5s .05s ease both;}
 .login-sub{font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:30px;animation:fadeInUp .5s .1s ease both;}
 .user-cards{display:flex;flex-direction:column;gap:10px;}
 .user-card{background:var(--card);border:2px solid var(--div);border-radius:12px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:transform .18s cubic-bezier(.2,.8,.3,1.2),border-color .18s,background .18s,box-shadow .18s;text-align:left;animation:fadeInUp .5s .15s ease both;position:relative;overflow:hidden;}
@@ -63,8 +66,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 /* ── HEADER ── */
 #hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 16px;height:52px;flex-shrink:0;}
 .logo{display:flex;align-items:center;gap:9px;}
-.logo-d{width:34px;height:34px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--gold);}
-.logo-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-l);}
+.logo-d{width:34px;height:34px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-size:16px;font-weight:700;color:var(--gold);}
+.logo-name{font-family:Georgia,'Times New Roman',serif;font-size:18px;color:var(--gold-l);}
 .logo-tag{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
 #clock{font-size:20px;font-weight:600;}
 #datel{font-size:10px;color:var(--muted);text-align:center;}
@@ -96,7 +99,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 #srch{flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:7px 12px;color:var(--txt);font-size:12px;outline:none;}
 #srch:focus{border-color:var(--gold);}
 #srch::placeholder{color:var(--muted);}
-.cat-title{padding:10px 14px 4px;font-family:'Playfair Display',serif;font-size:16px;color:var(--gold-l);flex-shrink:0;}
+.cat-title{padding:10px 14px 4px;font-family:Georgia,'Times New Roman',serif;font-size:16px;color:var(--gold-l);flex-shrink:0;}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:9px;padding:8px 14px 14px;overflow-y:auto;flex:1;}
 #grid::-webkit-scrollbar{width:4px;}
 #grid::-webkit-scrollbar-thumb{background:var(--div);}
@@ -274,14 +277,14 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 #remote-lock.active{display:flex;pointer-events:all;}
 .remote-lock-box{background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);}
 .remote-lock-icon{font-size:56px;margin-bottom:12px;}
-.remote-lock-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--red);margin-bottom:14px;}
+.remote-lock-title{font-family:Georgia,'Times New Roman',serif;font-size:22px;color:var(--red);margin-bottom:14px;}
 .remote-lock-msg{font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;}
 
 /* ── SESSION CAISSE ── */
 .session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .18s ease;}
 .session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
 .session-icon{font-size:44px;margin-bottom:8px;}
-.session-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
+.session-title{font-family:Georgia,'Times New Roman',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
 .session-sub{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.6;}
 .session-input-row{display:flex;flex-direction:column;gap:6px;text-align:left;margin-bottom:16px;}
 .session-input-row label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
