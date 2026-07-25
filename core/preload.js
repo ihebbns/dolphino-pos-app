@@ -13,4 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestFocusRecovery: ()      => ipcRenderer.send('request-focus-recovery'),
   poleListPorts:  ()            => ipcRenderer.invoke('pole-list-ports'),
   poleWrite:      (opts)        => ipcRenderer.invoke('pole-write', opts),
+  // Renderer tells the main process the UI is interactive, so heavy native work
+  // (sql.js WASM compile, drawer PowerShell warm-up) starts AFTER first paint
+  // instead of competing with it and making the first screen unclickable.
+  signalInteractive: ()         => ipcRenderer.send('app-interactive'),
 });

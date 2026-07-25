@@ -175,29 +175,56 @@ async function checkForUpdate(syncUrl, syncKey) {
   }
 }
 
+// ── Client syncKey ────────────────────────────────────────────────────
+// The built-in index.html carries CLIENT_CONFIG, whose syncKey identifies the
+// client. It drives BOTH the per-client OTA folder and the per-client SQLite
+// filename, so it MUST resolve or the app silently falls back to shared
+// defaults — and can then load ANOTHER client's OTA copy.
+//
+// Do NOT read only the head of the file to "save time". CLIENT_CONFIG is
+// emitted after the inline CSS/markup and sits ~1.2 MB in; a 64 KB bound never
+// found it and Cafeina booted as the default/shared client. The full read is a
+// few ms and was never the start-up bottleneck (that was sql.js WASM, the
+// drawer PowerShell compile and maximize()). Read once, cache, share.
+let _builtInSyncKey; // undefined = not resolved yet | null = genuinely absent
+function readBuiltInSyncKey() {
+  if (_builtInSyncKey !== undefined) return _builtInSyncKey;
+  _builtInSyncKey = null;
+  try {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const m = html.match(/syncKey:\s*'([^']+)'/);
+    if (m) _builtInSyncKey = m[1];
+  } catch (e) {}
+  if (_builtInSyncKey) {
+    console.log('[client] syncKey resolved:', _builtInSyncKey.slice(0, 6) + '…');
+  } else {
+    console.warn('[client] syncKey NOT found in built-in index.html — OTA folder and DB will use SHARED defaults');
+  }
+  return _builtInSyncKey;
+}
+
 // ── Resolve client index.html ─────────────────────────────────────────
 function resolveClientIndex() {
-  // First, read the syncKey from the BUILT-IN index.html to init OTA paths per client
   const builtInIndex = path.join(__dirname, '..', 'index.html');
-  try {
-    // Read only the head of the file. index.html is ~2 MB and this runs on the
-    // critical start-up path (loadFile calls this), so a full readFileSync plus
-    // a regex across 2 MB delayed first paint for nothing: CLIENT_CONFIG — and
-    // therefore syncKey — sits within the first few KB.
-    const fd = fs.openSync(builtInIndex, 'r');
-    try {
-      const buf = Buffer.alloc(65536);
-      const read = fs.readSync(fd, buf, 0, buf.length, 0);
-      const keyMatch = buf.slice(0, read).toString('utf8').match(/syncKey:\s*'([^']+)'/);
-      if (keyMatch) initOtaPaths(keyMatch[1]);
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch (e) {}
+  // Init the OTA paths for THIS client before any OTA lookup below.
+  const key = readBuiltInSyncKey();
+  if (key) initOtaPaths(key);
 
-  // Priority 1: OTA updated version for THIS client (keyed by syncKey)
-  const updated = getUpdatedIndex();
-  if (updated) return updated;
+  // Priority 1: OTA updated version for THIS client (keyed by syncKey).
+  //
+  // Only ever consult the OTA cache when the key resolved. UPDATE_DIR defaults
+  // to the UNKEYED userData/servio-update folder, which on any machine that ran
+  // an older build can still hold a DIFFERENT client's index.html. Serving it
+  // makes the EXE render the wrong brand, wrong menu and wrong prices — exactly
+  // what happened when the syncKey read was bounded to 64 KB. No key means we
+  // cannot prove the cache belongs to this client, so we ignore it and ship the
+  // bundled file, which is always correct.
+  if (key) {
+    const updated = getUpdatedIndex();
+    if (updated) return updated;
+  } else {
+    console.warn('[OTA] skipped: no syncKey, refusing to load a possibly foreign cached index.html');
+  }
 
   // Priority 2: Dev mode (CLIENT_DIR env)
   if (process.env.CLIENT_DIR) {
@@ -259,6 +286,12 @@ function createWindow() {
     mainWindow.show();
     mainWindow.focus();
     mainWindow.webContents.focus();
+    // Background services are NOT started here. 'ready-to-show' fires at first
+    // paint, while the renderer is still executing its start-up script, so
+    // spawning PowerShell and compiling WASM at this point competed with the UI
+    // and left the first screen unresponsive to clicks. The renderer calls
+    // signalInteractive() when it is genuinely ready; see startBackgroundServices().
+    setTimeout(startBackgroundServices, 3000);   // safety net if that never arrives
   });
 
   // (Focus recovery on window activation is registered further down, in the
@@ -346,6 +379,31 @@ ipcMain.handle('db-get-status', async () => {
   }
 });
 
+// A ticket must go to paper or nowhere at all — never to a file on the PC.
+// print({silent:true}) with no deviceName sends the job to the Windows DEFAULT
+// printer. When that default is "Microsoft Print to PDF" or "XPS Document
+// Writer" (which it is on most machines with no thermal printer installed),
+// Windows opens "Save Print Output As" and the cashier gets asked to save the
+// receipt on the computer. Resolving a real device and refusing to print when
+// there is none removes that behaviour completely.
+const VIRTUAL_PRINTER_RE = /PDF|XPS|OneNote|Fax|Print to|Adobe|Snagit|Document Writer|Foxit/i;
+async function resolveReceiptPrinter(wc) {
+  const cfg = hwConfig();
+  let list = [];
+  try { list = await wc.getPrintersAsync(); } catch (e) { return null; }
+  const label = p => (p.name || '') + ' ' + (p.displayName || '') + ' ' + (p.description || '');
+  const names = list.map(p => p.name);
+  // An explicit choice always wins, as long as it still exists.
+  if (cfg.receiptPrinter && names.includes(cfg.receiptPrinter)) return cfg.receiptPrinter;
+  if (cfg.drawerPrinter && names.includes(cfg.drawerPrinter)) return cfg.drawerPrinter;
+  const real = list.filter(p => !VIRTUAL_PRINTER_RE.test(label(p)));
+  const thermal = real.find(p => /XP|80|58|POS|Thermal|Receipt|TM-T|Caisse|Ticket|Star|EPSON/i.test(label(p)));
+  if (thermal) return thermal.name;
+  if (real.length === 1) return real[0].name;
+  const def = real.find(p => p.isDefault);   // a REAL default is fine; a virtual one is not
+  return def ? def.name : null;
+}
+
 ipcMain.on('print-receipt', (event, htmlContent) => {
   // Inject @page 80mm CSS to fix thermal printer paper width
   const printCSS = `<style>
@@ -367,33 +425,71 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
 
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    setTimeout(() => {
+      try { if (!printWin.isDestroyed()) printWin.close(); } catch (e) {}
+      try { fs.unlinkSync(tmpFile); } catch (e) {}
+      // Recover keyboard focus immediately + a couple of retries so the
+      // cashier never notices (was ~800ms before → felt like a freeze).
+      forceRecoverFocus();
+      setTimeout(forceRecoverFocus, 100);
+      setTimeout(forceRecoverFocus, 350);
+    }, 200);
+  };
+
   printWin.loadFile(tmpFile);
 
   printWin.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
+    setTimeout(async () => {
+      const t0 = Date.now();
+      const deviceName = await resolveReceiptPrinter(printWin.webContents);
+      if (!deviceName) {
+        console.log('[Print] no physical printer — ticket not printed (refusing PDF/XPS fallback)');
+        cleanup();
+        return;
+      }
       printWin.webContents.print(
         {
           silent: true,
+          deviceName,                 // pin the target so Windows cannot pick PDF
           printBackground: false,
           margins: { marginType: 'none' },
           pageSize: { width: 80000, height: 297000 }, // 80mm wide, auto height in microns
         },
         (success, errorType) => {
-          if (!success) console.error('Print failed:', errorType);
-          setTimeout(() => {
-            printWin.close();
-            try { fs.unlinkSync(tmpFile); } catch(e) {}
-            // Recover keyboard focus immediately + a couple of retries so the
-            // cashier never notices (was ~800ms before → felt like a freeze).
-            forceRecoverFocus();
-            setTimeout(forceRecoverFocus, 100);
-            setTimeout(forceRecoverFocus, 350);
-          }, 200);
+          console.log('[Print]', (success ? 'OK: ' : 'FAILED: ') + deviceName +
+                      (errorType ? ' — ' + errorType : '') + '  ' + (Date.now() - t0) + 'ms');
+          cleanup();
         }
       );
     }, 600);
   });
+
+  // If the page never loads, still clean the temp file up.
+  printWin.webContents.once('did-fail-load', cleanup);
 });
+
+// ── HARDWARE CONFIG ───────────────────────────────────────────────────
+// Optional per-terminal override of which printer receives the ticket and the
+// drawer kick, read from userData/hardware.json. Auto-detection below handles
+// the normal case; this exists so a stubborn site can be pinned without a
+// rebuild (set "receiptPrinter": "EXACT WINDOWS NAME").
+const HW_DEFAULTS = {
+  drawerPrinter: '',    // '' = auto-detect, and NEVER a blind "first printer"
+  receiptPrinter: '',   // '' = auto-detect; virtual PDF/XPS devices are never used
+};
+let _hwCfg = null;
+function hwConfig() {
+  if (_hwCfg) return _hwCfg;
+  _hwCfg = { ...HW_DEFAULTS };
+  try {
+    Object.assign(_hwCfg, JSON.parse(fs.readFileSync(path.join(userDataPath(), 'hardware.json'), 'utf8')));
+  } catch (e) {}
+  return _hwCfg;
+}
 
 // ── CASH DRAWER (XP-80T via RJ11 cable) ───────────────────────────────
 // Uses Windows WritePrinter API — no printer sharing needed.
@@ -444,12 +540,28 @@ const drawerPending = new Map(); // id -> { resolve, timer }
 // The server script the warm PowerShell runs: compile RawPrint once, resolve +
 // cache the printer once, then idle reading one-line commands from stdin.
 function buildDrawerServerScript() {
+  const forced = String(hwConfig().drawerPrinter || '').replace(/'/g, "''");
   return `$ErrorActionPreference='SilentlyContinue'
 Add-Type -TypeDefinition @'
 ${RAWPRINT_CS}
 '@ -ErrorAction SilentlyContinue
-$script:DrawerPrinter = (Get-Printer | Where-Object {$_.Name -match 'XP|80|POS|Thermal'} | Select-Object -First 1).Name
-if (-not $script:DrawerPrinter) { $script:DrawerPrinter = (Get-Printer | Select-Object -First 1).Name }
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+# Get-Printer is WMI and costs seconds on the start-up path; InstalledPrinters is
+# effectively instant. And the old blind fallback to the FIRST printer was worse
+# than useless: on most Windows boxes that is "Microsoft Print to PDF", so the
+# kick reported bytes written while the drawer never moved. An ambiguous setup
+# now returns NO_PRINTER so a human picks the right one.
+function Resolve-Printer {
+  if ('${forced}'.Length -gt 0) { return '${forced}' }
+  $all = @()
+  try { $all = @([System.Drawing.Printing.PrinterSettings]::InstalledPrinters) } catch {}
+  $real = @($all | Where-Object { $_ -notmatch 'PDF|XPS|OneNote|Fax|Print to|Adobe|Snagit' })
+  $pref = @($real | Where-Object { $_ -match 'XP|80|58|POS|Thermal|Receipt|TM-T|Caisse|Ticket|Star' })
+  if ($pref.Count -gt 0) { return $pref[0] }
+  if ($real.Count -eq 1) { return $real[0] }
+  return $null
+}
+$script:DrawerPrinter = Resolve-Printer
 function Invoke-Kick($id) {
   if (-not $script:DrawerPrinter) { Write-Output ("<<KICK $id NO_PRINTER>>"); return }
   try {
@@ -474,6 +586,7 @@ while ($true) {
   if ($null -eq $line) { break }
   $line = $line.Trim()
   if ($line -eq 'EXIT') { break }
+  if ($line -eq 'PRINTER') { Write-Output ("<<PRINTER " + $script:DrawerPrinter + ">>"); continue }
   if ($line.StartsWith('KICK')) {
     $parts = $line.Split(' ')
     $id = if ($parts.Length -gt 1) { $parts[1] } else { '0' }
@@ -584,8 +697,14 @@ function kickViaOneShot() {
         `Add-Type -TypeDefinition @'
 ${RAWPRINT_CS}
 '@ -ErrorAction SilentlyContinue;
-$p = (Get-Printer | Where-Object {$_.Name -match 'XP|80|POS|Thermal'} | Select-Object -First 1).Name;
-if (-not $p) { $p = (Get-Printer | Select-Object -First 1).Name };
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue;
+$forced = '${String(hwConfig().drawerPrinter || '').replace(/'/g, "''")}';
+if ($forced.Length -gt 0) { $p = $forced } else {
+  $all = @(); try { $all = @([System.Drawing.Printing.PrinterSettings]::InstalledPrinters) } catch {};
+  $real = @($all | Where-Object { $_ -notmatch 'PDF|XPS|OneNote|Fax|Print to|Adobe|Snagit' });
+  $pref = @($real | Where-Object { $_ -match 'XP|80|58|POS|Thermal|Receipt|TM-T|Caisse|Ticket|Star' });
+  if ($pref.Count -gt 0) { $p = $pref[0] } elseif ($real.Count -eq 1) { $p = $real[0] } else { $p = $null }
+};
 if (-not $p) { Write-Host 'NO_PRINTER'; exit };
 $bytes = [byte[]](0x1B,0x70,0x00,0x19,0xFA);
 $hPrinter = [IntPtr]::Zero;
@@ -612,38 +731,78 @@ Write-Host "OK:$p bytes:$written"`
   });
 }
 
+// A kick landing mid warm-up used to trigger a full one-shot: a SECOND
+// PowerShell compiling the same C# alongside the one already compiling it.
+// Waiting briefly for the service that is nearly ready is far cheaper.
+// ── Deferred start-up work ────────────────────────────────────────────
+// Only the DRAWER service is deferred, and only because it spawns a PowerShell
+// process that JIT-compiles C#.
+//
+// SQLite is deliberately NOT deferred. The renderer awaits it at login
+// (hydrateBusinessState reads today's sales to continue the ticket numbering),
+// so every millisecond it starts late is a millisecond the cashier stares at a
+// PIN pad that has already accepted the code. It used to be deferred here along
+// with the drawer, which is why the first screen felt frozen for seconds. The
+// original reason for deferring — a renderer busy parsing 1.9 MB of embedded
+// logo — no longer exists now that the page is 254 KB.
+let _bgStarted = false;
+function startBackgroundServices() {
+  if (_bgStarted) return;
+  _bgStarted = true;
+  setTimeout(startDrawerService, 250);
+}
+ipcMain.on('app-interactive', () => startBackgroundServices());
+
+function waitForDrawerReady(ms) {
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    (function poll() {
+      if (drawerReady) return resolve(true);
+      if (Date.now() - t0 > ms) return resolve(false);
+      setTimeout(poll, 40);
+    })();
+  });
+}
+
 // IPC contract UNCHANGED: resolves { ok, log }. Renderer/preload API unchanged.
 ipcMain.handle('open-cash-drawer', async () => {
+  const _t0 = Date.now();
+
+  // Give the warming service a moment before paying for a one-shot compile.
+  if (!drawerProc) startDrawerService();
+  if (!drawerReady) await waitForDrawerReady(2000);
+
   // Fast path: warm, ready service → tens of ms, no recompile, no Get-Printer.
   if (drawerProc && drawerReady) {
     try {
       const payload = await kickViaService();
       if (payload && payload.indexOf('OK:') === 0) {
+        console.log('[CashDrawer] warm kick ' + (Date.now() - _t0) + 'ms', payload);
         setTimeout(forceRecoverFocus, 300);
-        return { ok: true, log: payload };
+        return { ok: true, log: payload, ms: Date.now() - _t0 };
       }
       // NO_PRINTER / ERR from the warm service: the cached printer may be stale.
       // Re-resolve by respawning the service, and fall back one-shot for THIS kick.
       restartDrawerService();
       const res = await kickViaOneShot();
       setTimeout(forceRecoverFocus, 500);
-      return res;
+      return { ...res, ms: Date.now() - _t0 };
     } catch (e) {
       // Timeout / write failure: respawn the service + fall back for this kick.
       console.log('[CashDrawer] warm kick failed, falling back:', e.message);
       restartDrawerService();
       const res = await kickViaOneShot();
       setTimeout(forceRecoverFocus, 500);
-      return res;
+      return { ...res, ms: Date.now() - _t0 };
     }
   }
 
-  // Cold path (service not spawned yet, or still warming up): one-shot now, and
-  // warm the service so subsequent kicks are instant.
-  if (!drawerProc) startDrawerService();
+  // Cold path: the service never became ready within the wait above, so pay for
+  // a one-shot rather than leave the drawer shut.
   const res = await kickViaOneShot();
   setTimeout(forceRecoverFocus, 500);
-  return res;
+  console.log('[CashDrawer] one-shot ' + (Date.now() - _t0) + 'ms (service not ready)', res.log || '');
+  return { ...res, ms: Date.now() - _t0 };
 });
 
 
@@ -658,31 +817,53 @@ ipcMain.handle('open-cash-drawer', async () => {
 // electron-builder. This mirrors the same approach already used below for
 // the cash drawer (raw Windows API via PowerShell), so no new native
 // dependency or rebuild step is introduced.
-function escPs1SingleQuoted(s) {
-  return String(s == null ? '' : s).replace(/'/g, "''");
+// Faults this replaces, all of which left the display blank while reporting OK:
+//  1. DtrEnable/RtsEnable were never set. .NET defaults both to false, and many
+//     USB pole displays are powered or gated off those lines.
+//  2. the port was closed 30ms after writing, with no Flush and no wait on
+//     BytesToWrite, so at 9600 baud the bytes could be discarded unsent.
+//  3. it printed 'OK' whenever no exception was thrown. Opening a COM port with
+//     NOTHING attached succeeds — serial has no handshake — so OK never meant
+//     the customer saw anything. It now reports SENT:n, which is only a claim
+//     that the bytes left the port, and the UI asks a human to confirm.
+//  4. a missing port produced a vague exception instead of a clear diagnosis.
+//  5. text went out through .NET's default encoding, mangling accents. Bytes are
+//     built here instead. NOTE: this client's display is a NUMERIC-ONLY 5-digit
+//     VFD, so the renderer sends plain digits and the wire format below is kept
+//     byte-identical to before (0x0C, line1, 0x0D, line2) on purpose.
+function poleBytes(line1, line2) {
+  const enc = s => {
+    const out = [];
+    for (const ch of String(s == null ? '' : s).slice(0, 20)) {
+      const c = ch.codePointAt(0);
+      out.push(c >= 0x20 && c <= 0x7E ? c : 0x20);
+    }
+    return out;
+  };
+  const b = [0x0C, ...enc(line1), 0x0D, ...enc(line2)];
+  return b;
 }
 
-function poleDisplayPsArgs(port, baudRate, line1, line2) {
-  const l1 = escPs1SingleQuoted(String(line1 || '').slice(0, 20));
-  const l2 = escPs1SingleQuoted(String(line2 || '').slice(0, 20));
-  const p = escPs1SingleQuoted(port);
+function poleWritePsArgs(port, baudRate, bytes) {
+  const p = String(port).replace(/'/g, "''");
   return [
     '-NoProfile', '-NonInteractive', '-Command',
     `try {
+  $names = [System.IO.Ports.SerialPort]::GetPortNames();
+  if ($names -notcontains '${p}') { Write-Host 'ERR:PORT_ABSENT'; exit };
   $sp = New-Object System.IO.Ports.SerialPort '${p}', ${baudRate}, ([System.IO.Ports.Parity]::None), 8, ([System.IO.Ports.StopBits]::One);
+  $sp.DtrEnable = $true;
+  $sp.RtsEnable = $true;
+  $sp.WriteTimeout = 2000;
   $sp.Open();
-  $clr = [byte[]](0x0C);
-  $sp.Write($clr, 0, 1);
-  Start-Sleep -Milliseconds 30;
-  $l1 = '${l1}';
-  if ($l1.Length -gt 0) { $sp.Write($l1); }
-  $cr = [byte[]](0x0D);
-  $sp.Write($cr, 0, 1);
-  $l2 = '${l2}';
-  if ($l2.Length -gt 0) { $sp.Write($l2); }
-  Start-Sleep -Milliseconds 30;
+  $b = [byte[]](${bytes.join(',')});
+  $sp.Write($b, 0, $b.Length);
+  $sp.BaseStream.Flush();
+  $sw = [System.Diagnostics.Stopwatch]::StartNew();
+  while ($sp.BytesToWrite -gt 0 -and $sw.ElapsedMilliseconds -lt 1500) { Start-Sleep -Milliseconds 5 };
+  Start-Sleep -Milliseconds 60;
   $sp.Close();
-  Write-Host 'OK';
+  Write-Host ('SENT:' + $b.Length);
 } catch {
   Write-Host ('ERR:' + $_.Exception.Message);
 }`
@@ -704,19 +885,24 @@ ipcMain.handle('pole-list-ports', async () => {
 
 ipcMain.handle('pole-write', async (_event, opts) => {
   const { port, baudRate, line1, line2 } = opts || {};
+  const bytes = poleBytes(line1, line2);
+
   return new Promise((resolve) => {
     if (!port) { resolve({ ok: false, error: 'Aucun port COM configuré' }); return; }
-    const args = poleDisplayPsArgs(port, baudRate || 9600, line1, line2);
-    execFile('powershell', args, { timeout: 8000, windowsHide: true }, (err, stdout) => {
-      const out = (stdout || '').trim();
-      const ok = !err && out.startsWith('OK');
-      if (!ok) console.log('[PoleDisplay]', out || err?.message);
-      // Same fix as print/cash-drawer: spawning a PowerShell process steals
-      // Chromium's internal keyboard focus. Recover it every time, since
-      // pole writes happen frequently (on every cart/total change).
-      forceRecoverFocus();
-      resolve({ ok, log: out });
-    });
+    const t0 = Date.now();
+    execFile('powershell', poleWritePsArgs(port, baudRate || 9600, bytes),
+      { timeout: 8000, windowsHide: true }, (err, stdout) => {
+        const out = (stdout || '').trim();
+        // 'SENT' means the bytes left the port. It does NOT prove the customer
+        // saw them — no cheap VFD can be read back.
+        const sent = !err && out.startsWith('SENT:');
+        if (!sent) console.log('[PoleDisplay]', out || err?.message);
+        // Same fix as print/cash-drawer: spawning a PowerShell process steals
+        // Chromium's internal keyboard focus. Recover it every time, since
+        // pole writes happen frequently (on every cart/total change).
+        forceRecoverFocus();
+        resolve({ ok: sent, log: out, transmitted: sent });
+      });
   });
 });
 
@@ -744,36 +930,21 @@ app.whenReady().then(() => {
   // delayed by seconds. The window is created first now, and the heavy work is
   // either bounded or deferred until after the UI is on screen.
 
-  // Read the syncKey to isolate the database per client. index.html is ~2 MB, so
-  // read only the head of it: CLIENT_CONFIG sits at the top and a full
-  // readFileSync of 2 MB plus a regex over it blocked start-up for no reason.
-  try {
-    const builtInIndex = path.join(__dirname, '..', 'index.html');
-    const fd = fs.openSync(builtInIndex, 'r');
-    try {
-      const buf = Buffer.alloc(65536);            // 64 KB is far past CLIENT_CONFIG
-      const read = fs.readSync(fd, buf, 0, buf.length, 0);
-      const keyMatch = buf.slice(0, read).toString('utf8').match(/syncKey:\s*'([^']+)'/);
-      if (keyMatch) global.__servioSyncKey = keyMatch[1];
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch(e) {}
+  // Resolve the syncKey to isolate the database per client. This MUST run before
+  // getDatabaseReady() below, since database.js reads global.__servioSyncKey to
+  // pick the SQLite filename. Cached full read — see readBuiltInSyncKey().
+  {
+    const key = readBuiltInSyncKey();
+    if (key) global.__servioSyncKey = key;
+  }
 
-  // Window first, so the renderer can start parsing and painting immediately.
+  // Start compiling the sql.js WASM module NOW, in parallel with the window.
+  // The renderer blocks on this at login, so it must be as far ahead as possible;
+  // by the time a human has picked a user and typed four digits it is long done.
+  getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
+
+  // Window second, so the renderer can start parsing and painting immediately.
   createWindow();
-
-  // SQLite (sql.js WASM) compiles on the main process and is CPU-bound. Kicking
-  // it off before the window meant it competed with window creation. The
-  // renderer waits on getDbStatus() anyway and tolerates it arriving late.
-  setImmediate(() => {
-    getDatabaseReady(userDataPath()).catch(error => console.error('SQLite startup init failed:', error));
-  });
-
-  // Warm the persistent cash-drawer service so the FIRST Encaisser tap is
-  // instant. Its PowerShell compile takes 1-3s, so hold it back until the UI is
-  // visible; the one-shot fallback covers any kick arriving before it is warm.
-  setTimeout(startDrawerService, 4000);
 
   // ── FOCUS RECOVERY (Electron keyboard fix) ──────────────────────────
   // Problem: After printing, cash drawer, or child windows, Electron loses
@@ -816,15 +987,17 @@ app.whenReady().then(() => {
 
   // OTA: check for updates 10 seconds after startup (non-blocking)
   setTimeout(() => {
-    // Read syncUrl and syncKey from the loaded index.html
+    // Identity comes from the BUNDLED index.html, never from the loaded one.
+    // resolveClientIndex() can return the OTA cache, so reading the key back out
+    // of it lets a bad cache point this terminal at another client's update
+    // channel and keep it there. The bundle is immutable and always right.
     try {
-      const indexPath = resolveClientIndex();
-      const indexContent = fs.readFileSync(indexPath, 'utf8');
+      const indexContent = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
       const syncUrlMatch = indexContent.match(/syncUrl:\s*'([^']+)'/);
-      const syncKeyMatch = indexContent.match(/syncKey:\s*'([^']+)'/);
-      if (syncUrlMatch && syncKeyMatch) {
-        initOtaPaths(syncKeyMatch[1]);
-        checkForUpdate(syncUrlMatch[1], syncKeyMatch[1]);
+      const syncKey = readBuiltInSyncKey();
+      if (syncUrlMatch && syncKey) {
+        initOtaPaths(syncKey);
+        checkForUpdate(syncUrlMatch[1], syncKey);
       }
     } catch (e) {
       console.log('[OTA] Could not read config:', e.message);
