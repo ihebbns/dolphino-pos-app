@@ -360,6 +360,9 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 #table-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--gold-dim);border:1px solid rgba(200,145,58,.3);border-radius:8px;padding:8px 12px;margin-bottom:8px;}
 #table-banner .tb-name{font-size:14px;font-weight:800;color:var(--gold-l);}
 #table-banner .tb-back{font-size:12px;font-weight:700;color:var(--blue);cursor:pointer;background:var(--card);border:1px solid rgba(74,144,217,.3);border-radius:6px;padding:6px 10px;}
+#table-banner .tb-fire{font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer;background:var(--green);border:1px solid rgba(61,184,122,.5);border-radius:6px;padding:7px 12px;white-space:nowrap;}
+#table-banner .tb-fire[disabled]{opacity:.35;cursor:default;}
+.oi .isent{font-size:10px;font-weight:800;color:var(--green);letter-spacing:.4px;}
 
 /* ── BARCODE (module: barcode) ── */
 .barcode-wrap{position:relative;display:flex;align-items:center;margin-right:8px;}
@@ -451,6 +454,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-ajout-fond" onclick="showAjoutFond()" style="display:none;border-color:rgba(61,184,122,.3);color:var(--green)">💰 Mouvements</button>
     <button class="hdr-btn" id="btn-pins" onclick="showUserManager()" style="display:none">👥 Utilisateurs</button>
     <button class="hdr-btn" id="btn-pole" onclick="showPoleConfig()" style="display:none">🖥️ Afficheur</button>
+    <button class="hdr-btn" id="btn-waiter" onclick="showWaiterHub()" style="display:none">📱 Tablette serveur</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" id="btn-credits" onclick="showCreditManager()">📒 Crédits</button>
@@ -484,7 +488,10 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <!-- Table banner (only in table mode) -->
     <div id="table-banner" style="display:none">
       <span class="tb-name" id="tb-name">🪑 Table</span>
-      <span class="tb-back" onclick="backToPlan()">← Plan de salle</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <button class="tb-fire" id="tb-fire" onclick="fireOrder()">🍳 Envoyer</button>
+        <span class="tb-back" onclick="backToPlan()">← Plan de salle</span>
+      </span>
     </div>
     <!-- Order type -->
     <div class="otype">
@@ -808,6 +815,9 @@ const USERS={
 let currentUser=null,currentPinUser=null,pinBuffer='';
 let cat=Object.keys(MENU)[0],items=[],disc=0,payMode='cash';
 let orderNum=1,orderType='place',cliName='',cliTel='';
+// Rounds already fired to the stations for the order currently open (per table).
+// Declared with the other order state so the day-reset paths can touch it.
+let firedRounds=0;
 let daily=0,hist=[];
 let pendV=null,noteTarget=null;
 let lastOrderData=null;
@@ -958,6 +968,17 @@ async function pullCloudCosts(){
         if(row && row.item_id != null) map[row.item_id] = parseFloat(row.cost) || 0;
       }
       CLOUD_COST = map;
+
+      // ── track_mode sync (web → POS) ────────────────────────────────
+      for(const row of data.stock){
+        if(!row || row.item_id == null || !row.track_mode) continue;
+        const mi = Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===row.item_id);
+        if(mi){
+          const shouldTrack = (row.track_mode === 'stock');
+          if(mi.tracked !== shouldTrack) mi.tracked = shouldTrack;
+        }
+      }
+      try{ localStorage.setItem('servio-menu-v1', JSON.stringify(MENU)); }catch(e){}
     }
   }catch(e){ /* offline — keep last known costs */ }
 }
@@ -1582,6 +1603,7 @@ function resetBusinessDay(){
   orderNum=1;
   items=[];
   disc=0;
+  firedRounds=0;
   payMode='cash';
   orderType='place';
   cliName='';
@@ -2093,7 +2115,22 @@ function removeItemPhoto(catKey, itemId){
 }
 function toggleItemStock(c,id,checked){
   const it=MENU[c].items.find(x=>x.id===id);
-  if(it){it.tracked=checked;saveMenuToStorage();flash(checked?'📦 Stock activé':'📦 Stock désactivé');}
+  if(it){
+    it.tracked=checked;
+    saveMenuToStorage();
+    flash(checked?'📦 Stock activé':'📦 Stock désactivé');
+    syncTrackMode(id, checked ? 'stock' : 'none');
+  }
+}
+async function syncTrackMode(itemId, mode){
+  if(!SYNC_ENABLED) return;
+  try{
+    await fetch(SYNC_API_URL.replace('/api/sync','/api/me/catalog'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: SYNC_API_KEY, item_id: itemId, track_mode: mode })
+    });
+  }catch(e){}
 }
 // Cost is web-owned (entered on the dashboard, flows web → POS). Kept as a
 // no-op for backward compatibility with anything that still calls it.
@@ -2272,7 +2309,7 @@ function logout(){
   if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
   syncActiveTable(); activeTableId=null; closeTablesPlan(); updateTableBanner();
   currentUser=null;currentPinUser=null;pinBuffer='';
-  items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';pendV=null;noteTarget=null;lastOrderData=null;
+  items=[];disc=0;firedRounds=0;payMode='cash';orderType='place';cliName='';cliTel='';pendV=null;noteTarget=null;lastOrderData=null;
   saveState();
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('hdr').style.display='none';
@@ -2341,7 +2378,7 @@ function addItem(id,name,p,e,variant){
   const key=id+(variant||'');
   const ex=items.find(i=>i.key===key);
   if(ex)ex.qty++;
-  else items.push({key,id,name,p,e,variant,qty:1,note:'',cat});
+  else items.push({key,id,name,p,e,variant,qty:1,note:'',cat,sentQty:0});
   renderOrd();saveState();flash('✓ '+name+' ajouté');
 }
 
@@ -2361,6 +2398,7 @@ function renderOrd(){
         <div class="ii">
           <div class="in">${it.e} ${it.name}</div>
           ${it.variant?`<div class="isub">${it.variant}</div>`:''}
+          ${it.sentQty>0?`<div class="isent">🍳 ${it.sentQty>=it.qty?'envoyé':it.sentQty+' envoyé(s)'}</div>`:''}
           <div class="inote" onclick="openNote('${it.key}')">
             ${it.note?`📝 ${it.note}`:`<span style="opacity:.5">+ Ajouter une note</span>`}
           </div>
@@ -2369,11 +2407,27 @@ function renderOrd(){
         <div class="id" onclick="rmI('${it.key}')">✕</div>
       </div>`).join('');
   }
-  calcTots();renderQA();updBtn();
+  calcTots();renderQA();updBtn();updateFireButton();
 }
-function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
-function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+function chgQ(key,d){
+  const i=items.findIndex(x=>x.key===key);if(i<0)return;
+  const it=items[i];
+  it.qty+=d;
+  // Going below what the station is already making cancels the difference.
+  if(it.qty < (it.sentQty||0)){
+    const cancelled=(it.sentQty||0)-Math.max(it.qty,0);
+    voidFired(it, cancelled);
+    it.sentQty=Math.max(it.qty,0);
+  }
+  if(it.qty<=0)items.splice(i,1);
+  renderOrd();saveState();
+}
+function rmI(key){
+  const it=items.find(x=>x.key===key);
+  if(it && it.sentQty>0) voidFired(it, it.sentQty);
+  items=items.filter(x=>x.key!==key);renderOrd();saveState();
+}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items.forEach(it=>{ if(it.sentQty>0) voidFired(it, it.sentQty); });items=[];disc=0;firedRounds=0;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
 
 // ═══════════════ NOTE ═══════════════
 function openNote(key){
@@ -2520,7 +2574,7 @@ function encaisser(){
   showReceipt(od);
   autoPrintAll(od);
   // 2) Kitchen ticket(s) auto-print right after, queued inside autoPrintAll()
-  items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';
+  items=[];disc=0;firedRounds=0;payMode='cash';orderType='place';cliName='';cliTel='';
   document.getElementById('cr').value='';
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
   document.querySelectorAll('.pb').forEach((b,i)=>b.classList.toggle('on',i===0));
@@ -2563,7 +2617,27 @@ const BOISSON_CATS= CLIENT_CONFIG.boissonCats;
 const ZONE1_LABEL = CLIENT_CONFIG.zone1Label;
 const ZONE2_LABEL = CLIENT_CONFIG.zone2Label;
 
-function kitchenTicketHTML(od, zoneItems, zoneLabel){
+// One place that decides which preparation zone an item belongs to, so the
+// payment ticket and the "Envoyer" ticket can never disagree about routing.
+function inCats(it, cats){ return cats.some(c => it.name.startsWith(c+' ') || it.cat===c); }
+function zoneOf(it){
+  if(inCats(it, BOISSON_CATS)) return null;      // drinks: client ticket only
+  if(inCats(it, ZONE1_CATS))   return 1;
+  if(inCats(it, ZONE2_CATS))   return 2;
+  return null;                                    // unmapped: no kitchen ticket
+}
+function zoneLabelOf(z){ return z===1 ? ZONE1_LABEL : ZONE2_LABEL; }
+
+// Single print entry point for every station ticket. Electron prints silently;
+// a browser falls back to a popup so the same code works in the web POS.
+function printTicket(html){
+  if(window.electronAPI?.printReceipt){ window.electronAPI.printReceipt(html); return; }
+  const w=window.open('','_blank','width=350,height=520');
+  if(w){ w.document.write(html); w.document.close(); setTimeout(()=>{w.print();w.close();},400); }
+}
+
+function kitchenTicketHTML(od, zoneItems, zoneLabel, opts){
+  const o=opts||{};
   const typeLabel={place:'Sur place',take:'Emporter',del:'Livraison'};
   const lines=zoneItems.map(it=>`
     <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:900;padding:5px 0;border-bottom:2px solid #000;">
@@ -2582,9 +2656,10 @@ function kitchenTicketHTML(od, zoneItems, zoneLabel){
     .cli{font-size:13px;font-weight:900;margin-bottom:8px;padding:5px;border:1px solid #000;}
     .foot{text-align:center;margin-top:10px;font-size:12px;font-weight:900;}
   </style></head><body>
-  <h2>BON DE CUISINE</h2>
+  <h2>${o.title||'BON DE CUISINE'}</h2>
   <div class="zone">${zoneLabel}</div>
-  <div class="type">${typeLabel[od.type]}</div>
+  <div class="type">${o.typeLabel||typeLabel[od.type]||'Sur place'}</div>
+  ${o.headline?`<div class="type">${o.headline}</div>`:''}
   <div class="num">#${String(od.num).padStart(3,'0')}</div>
   ${(od.cliName||od.cliTel)?`<div class="cli">${od.cliName?'Client: '+od.cliName+'<br>':''}${od.cliTel?'Tel: '+od.cliTel:''}</div>`:''}
   ${lines}
@@ -2593,30 +2668,115 @@ function kitchenTicketHTML(od, zoneItems, zoneLabel){
 }
 
 function autoPrintKitchen(od){
-  // Boisson items never go to kitchen
-  const isBoisson = it => BOISSON_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c);
-  const zone1Items = od.items.filter(it => !isBoisson(it) && ZONE1_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c));
-  const zone2Items = od.items.filter(it => !isBoisson(it) && ZONE2_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c));
-
-  function printWindow(html){
-    if(window.electronAPI?.printReceipt){
-      window.electronAPI.printReceipt(html);
-    }else{
-      const w=window.open('','_blank','width=350,height=520');
-      if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
-    }
-  }
+  // Anything already sent with "Envoyer" is being prepared: printing it again at
+  // payment is how a kitchen ends up making the same plate twice.
+  const pending = od.items.filter(it => (it.qty - (it.sentQty||0)) > 0)
+                          .map(it => ({...it, qty: it.qty - (it.sentQty||0)}));
+  const zone1Items = pending.filter(it => zoneOf(it)===1);
+  const zone2Items = pending.filter(it => zoneOf(it)===2);
 
   // Client ticket (doPrint) is fired first and finishes around ~400-600ms.
   // Kitchen ticket(s) are queued after that, staggered so each order sent to the
   // printer stays sequential: client → cuisine 1 (if present) → cuisine 2 (if present).
   if(zone1Items.length>0){
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL)),900);
+    setTimeout(()=>printTicket(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL)),900);
   }
   if(zone2Items.length>0){
     const delay=zone1Items.length>0?1700:900;
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL)),delay);
+    setTimeout(()=>printTicket(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL)),delay);
   }
+}
+
+// ═══════════════ ENVOYER EN PRÉPARATION (fire) ═══════════════
+// A served table is not a paid sale. The waiter sends the round to the bar /
+// kitchen while the customer is still sitting, then payment happens later.
+// `sentQty` on each line is the contract: how many of that line the station has
+// already been told to make. qty − sentQty is what still has to be fired; a qty
+// dropped BELOW sentQty is a cancellation and owes the station an annulation.
+// (`firedRounds` lives with the order state at the top of the script.)
+
+function pendingFireItems(){
+  return items.filter(it => zoneOf(it)!==null && (it.qty-(it.sentQty||0))>0)
+              .map(it => ({...it, qty: it.qty-(it.sentQty||0)}));
+}
+function fireContext(){
+  const t = (MODULES.tables && activeTableId!==null) ? TBL.find(x=>x.id===activeTableId) : null;
+  return {
+    headline: t ? ('TABLE '+t.id+(t.section?' · '+t.section:'')) : 'COMPTOIR',
+    typeLabel: t ? 'Sur place' : ({place:'Sur place',take:'Emporter',del:'Livraison'}[orderType]||'Sur place'),
+  };
+}
+function updateFireButton(){
+  const b = document.getElementById('tb-fire'); if(!b) return;
+  const n = pendingFireItems().reduce((a,i)=>a+i.qty,0);
+  b.disabled = n===0;
+  b.textContent = n>0 ? `🍳 Envoyer (${n})` : '🍳 Envoyer';
+}
+
+// Split a list across the two stations and print. Shared by the counter's
+// "Envoyer" button and by orders arriving from a waiter tablet, so a ticket
+// looks the same whoever sent it.
+function printPrepZones(list, od, opts){
+  const z1 = list.filter(it=>zoneOf(it)===1);
+  const z2 = list.filter(it=>zoneOf(it)===2);
+  if(z1.length) printTicket(kitchenTicketHTML(od,z1,ZONE1_LABEL,opts));
+  if(z2.length) setTimeout(()=>printTicket(kitchenTicketHTML(od,z2,ZONE2_LABEL,opts)), z1.length?800:0);
+  return z1.length + z2.length;
+}
+
+function fireOrder(){
+  if(MODULES.kitchenTickets === false || MODULES.printEnabled === false){ flash('⚠ Tickets cuisine désactivés'); return; }
+  const pending = pendingFireItems();
+  if(!pending.length){ flash('Rien à envoyer'); return; }
+  const ctx = fireContext();
+  const round = ++firedRounds;
+  const od = {
+    num: orderNum, type: orderType,
+    cliName: document.getElementById('cli-name')?.value||'',
+    cliTel:  document.getElementById('cli-tel')?.value||'',
+    cashier: USERS[currentUser]?.name||'',
+    time: new Date().toLocaleTimeString('fr-TN'),
+  };
+  const opts = {
+    title: round>1 ? 'BON DE PRÉPARATION — SUITE '+round : 'BON DE PRÉPARATION',
+    headline: ctx.headline, typeLabel: ctx.typeLabel,
+  };
+  printPrepZones(pending, od, opts);
+  // Stamp only after the tickets are queued, so a thrown error above cannot
+  // mark items as sent when nothing reached the printer.
+  items.forEach(it => { if(zoneOf(it)!==null && it.qty>(it.sentQty||0)){ it.sentQty=it.qty; it.sentAt=Date.now(); } });
+  syncActiveTable(); renderOrd(); saveState();
+  flash('🍳 '+pending.reduce((a,i)=>a+i.qty,0)+' article(s) envoyé(s) en préparation');
+}
+
+// A line already in preparation that shrinks or disappears must be told to the
+// station that received it — otherwise the barista keeps making a cancelled item.
+function voidTicketHTML(it, qty, zoneLabel){
+  const ctx = fireContext();
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    *{font-family:'Courier New',monospace;font-weight:900;}
+    body{max-width:280px;margin:0 auto;padding:10px;}
+    h2{font-size:18px;text-align:center;border:4px solid #000;padding:8px;margin:0 0 8px;font-weight:900;}
+    .zone{text-align:center;font-size:13px;font-weight:900;padding:5px;border:2px solid #000;margin-bottom:8px;}
+    .num{text-align:center;font-size:30px;font-weight:900;letter-spacing:3px;border:3px solid #000;padding:6px;margin-bottom:10px;}
+    .line{text-align:center;font-size:17px;font-weight:900;padding:8px;border:3px solid #000;}
+    .foot{text-align:center;margin-top:10px;font-size:12px;font-weight:900;}
+  </style></head><body>
+  <h2>** ANNULATION **</h2>
+  <div class="zone">${zoneLabel}</div>
+  <div class="zone">${ctx.headline}</div>
+  <div class="num">#${String(orderNum).padStart(3,'0')}</div>
+  <div class="line">ANNULER ${qty}x ${it.name}${it.variant?' ('+it.variant+')':''}</div>
+  <div class="foot">${new Date().toLocaleTimeString('fr-TN')} — ${USERS[currentUser]?.name||''}</div>
+  </body></html>`;
+}
+function voidFired(it, qty){
+  const z = zoneOf(it);
+  if(!z || qty<=0) return;
+  if(MODULES.kitchenTickets === false || MODULES.printEnabled === false) return;
+  printTicket(voidTicketHTML(it, qty, zoneLabelOf(z)));
+  flash('⚠ Annulation envoyée : '+qty+'x '+it.name);
 }
 
 // ═══════════════ RECEIPT ═══════════════
@@ -2702,7 +2862,7 @@ function doPrint(){
 }
 
 function newOrd(){
-  items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';lastOrderData=null;
+  items=[];disc=0;firedRounds=0;payMode='cash';orderType='place';cliName='';cliTel='';lastOrderData=null;
   document.getElementById('cr').value='';
   document.getElementById('rm').style.display='none';
   document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
@@ -3360,7 +3520,7 @@ function confirmCreditSale(idx){
   if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   syncSale(od);
-  items=[];disc=0;payMode='cash';orderType='place';
+  items=[];disc=0;firedRounds=0;payMode='cash';orderType='place';
   document.getElementById('cr').value='';
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
   document.querySelectorAll('.pb').forEach(b=>b.classList.remove('on'));
@@ -3670,7 +3830,7 @@ function handleBarcodeScan(code){
     else {
       const ex = items.find(i=>i.key===it.id);
       if(ex) ex.qty++;
-      else items.push({key:it.id, id:it.id, name:c+' '+it.name, p:it.p, e:it.e, variant:'', qty:1, note:'', cat:c});
+      else items.push({key:it.id, id:it.id, name:c+' '+it.name, p:it.p, e:it.e, variant:'', qty:1, note:'', cat:c, sentQty:0});
       renderOrd(); saveState(); flash('✓ '+it.e+' '+it.name+' ajouté');
     }
   } else {
@@ -3764,7 +3924,7 @@ function setTblSection(s){ tblSection = s; renderTablesPlan(); }
 function goCounter(){
   syncActiveTable();
   activeTableId = null;
-  items = []; disc = 0;
+  items = []; disc = 0; firedRounds = 0;
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
   updateTableBanner();
   closeTablesPlan();
@@ -3778,6 +3938,7 @@ function openTable(id){
   activeTableId = id;
   items = Array.isArray(t.items) ? t.items.map(x=>({...x})) : [];
   disc  = t.disc || 0;
+  firedRounds = t.fired || 0;      // so a 2nd round prints as "SUITE 2"
   if(t.status===TSTATUS.FREE){ t.status=TSTATUS.OCCUPIED; t.openedAt=Date.now(); saveTables(); }
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',[0,5,10,15][i]===disc));
   updateTableBanner();
@@ -3788,7 +3949,7 @@ function openTable(id){
 function backToPlan(){
   syncActiveTable();
   activeTableId = null;
-  items = []; disc = 0;
+  items = []; disc = 0; firedRounds = 0;
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
   updateTableBanner();
   renderOrd(); saveState();
@@ -3800,6 +3961,7 @@ function syncActiveTable(){
   const t = TBL.find(x=>x.id===activeTableId); if(!t) return;
   t.items = items.map(x=>({...x}));
   t.disc  = disc;
+  t.fired = firedRounds;
   t.total = items.reduce((s,i)=>s+i.p*i.qty,0);
   if(t.items.length===0){ t.status=TSTATUS.FREE; t.openedAt=null; }
   else if(t.status===TSTATUS.FREE){ t.status=TSTATUS.OCCUPIED; t.openedAt=t.openedAt||Date.now(); }
@@ -3809,8 +3971,8 @@ function syncActiveTable(){
 function freeActiveTableAfterPay(){
   if(!MODULES.tables || activeTableId===null) return;
   const t = TBL.find(x=>x.id===activeTableId);
-  if(t){ t.items=[]; t.disc=0; t.total=0; t.status=TSTATUS.FREE; t.openedAt=null; saveTables(); }
-  activeTableId = null;
+  if(t){ t.items=[]; t.disc=0; t.fired=0; t.total=0; t.status=TSTATUS.FREE; t.openedAt=null; saveTables(); }
+  activeTableId = null; firedRounds = 0;
   updateTableBanner();
   setTimeout(openTablesPlan, 250);
 }
@@ -3822,6 +3984,10 @@ function updateTableBanner(){
     const t = TBL.find(x=>x.id===activeTableId);
     if(banner){ banner.style.display='flex'; const n=document.getElementById('tb-name'); if(n) n.textContent = '🪑 Table '+(t?t.id:'')+(t?' · '+t.section:''); }
     if(otype) otype.style.display='none';          // table = dine-in, no takeaway/delivery toggle
+    // "Envoyer" only exists where there is a station to send to.
+    const fb = document.getElementById('tb-fire');
+    if(fb) fb.style.display = (MODULES.kitchenTickets === false || MODULES.printEnabled === false) ? 'none' : '';
+    updateFireButton();
   }else{
     if(banner) banner.style.display='none';
     if(otype && MODULES.tables) otype.style.display=''; // counter mode within a table-enabled client

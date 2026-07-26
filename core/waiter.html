@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12100e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Servio — Serveur</title>
+<style>
+  :root{
+    --bg:#12100e; --card:#1c1917; --card2:#242020; --div:#332e2a;
+    --txt:#f2ede7; --muted:#9a8f85;
+    --gold:#c8913a; --gold-l:#e3b25f; --gold-dim:rgba(200,145,58,.13);
+    --green:#3db87a; --red:#e05252; --blue:#4a90d9;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+    padding-bottom:env(safe-area-inset-bottom);
+    -webkit-user-select:none; user-select:none;
+  }
+  button{font-family:inherit;color:inherit;}
+
+  /* ── top bar ── */
+  .top{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--div);flex:0 0 auto;}
+  .top .t-title{font-size:17px;font-weight:800;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .top .t-sub{font-size:12px;color:var(--muted);font-weight:600;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--red);flex:0 0 auto;}
+  .dot.ok{background:var(--green);}
+  .iconbtn{background:var(--card2);border:1px solid var(--div);border-radius:10px;padding:10px 14px;font-size:15px;font-weight:700;}
+
+  .body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;}
+  .hide{display:none!important;}
+
+  /* ── pairing ── */
+  .pair{max-width:420px;margin:0 auto;padding-top:6vh;text-align:center;}
+  .pair h1{font-size:24px;margin:0 0 6px;}
+  .pair p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 22px;}
+  .fld{width:100%;background:var(--card);border:1px solid var(--div);border-radius:12px;color:var(--txt);
+       font-size:19px;padding:16px;margin-bottom:12px;text-align:center;font-weight:700;}
+  .fld.code{font-size:34px;letter-spacing:10px;font-weight:800;}
+  .cta{width:100%;background:var(--gold);border:none;border-radius:12px;color:#1a1512;
+       font-size:18px;font-weight:800;padding:18px;margin-top:6px;}
+  .cta:disabled{opacity:.4;}
+  .err{color:var(--red);font-size:14px;font-weight:700;min-height:22px;margin-top:12px;}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
+  .keypad button{background:var(--card);border:1px solid var(--div);border-radius:12px;font-size:26px;font-weight:800;padding:18px 0;}
+
+  /* ── tables ── */
+  .secs{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;}
+  .sec{flex:0 0 auto;background:var(--card);border:1px solid var(--div);border-radius:20px;padding:10px 18px;font-size:14px;font-weight:700;color:var(--muted);}
+  .sec.on{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-l);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px;}
+  .tbl{background:var(--card);border:1px solid var(--div);border-radius:14px;padding:16px 10px;text-align:center;position:relative;}
+  .tbl.occupied{border-color:var(--gold);background:var(--gold-dim);}
+  .tbl.bill{border-color:var(--orange,#d98a3a);}
+  .tbl .tn{font-size:17px;font-weight:800;margin-top:6px;}
+  .tbl .ti{font-size:11px;color:var(--muted);font-weight:600;margin-top:3px;}
+  .tbl .tt{font-size:13px;font-weight:800;color:var(--gold-l);margin-top:5px;}
+  .tbl .ic{font-size:26px;}
+
+  /* ── menu ── */
+  .cats{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;}
+  .cat{flex:0 0 auto;background:var(--card);border:1px solid var(--div);border-radius:20px;padding:10px 16px;font-size:14px;font-weight:700;color:var(--muted);}
+  .cat.on{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-l);}
+  .prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
+  .prod{background:var(--card);border:1px solid var(--div);border-radius:14px;padding:14px 10px;text-align:center;}
+  .prod .pe{font-size:26px;}
+  .prod .pn{font-size:13px;font-weight:700;line-height:1.3;margin-top:6px;}
+  .prod .pp{font-size:13px;font-weight:800;color:var(--gold-l);margin-top:5px;}
+  .prod.oos{opacity:.35;}
+
+  /* ── cart ── */
+  .cart{flex:0 0 auto;background:var(--card);border-top:1px solid var(--div);max-height:46vh;display:flex;flex-direction:column;}
+  .cart-h{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;font-size:13px;font-weight:800;color:var(--muted);}
+  .cart-l{overflow-y:auto;padding:0 14px;}
+  .ln{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--div);}
+  .ln .lq{display:flex;align-items:center;gap:8px;}
+  .ln .qb{background:var(--card2);border:1px solid var(--div);border-radius:8px;width:38px;height:38px;font-size:20px;font-weight:800;}
+  .ln .qv{min-width:22px;text-align:center;font-size:16px;font-weight:800;}
+  .ln .li{flex:1;min-width:0;}
+  .ln .lname{font-size:14px;font-weight:700;}
+  .ln .lnote{font-size:12px;color:var(--gold-l);font-weight:600;margin-top:2px;}
+  .ln .ldel{color:var(--red);font-size:18px;font-weight:800;padding:6px 10px;}
+  .sent{padding:10px 14px;background:var(--card2);border-top:1px solid var(--div);font-size:12px;color:var(--muted);font-weight:600;line-height:1.7;}
+  .fire{margin:12px 14px;background:var(--green);border:none;border-radius:14px;color:#0d1f16;font-size:19px;font-weight:900;padding:20px;width:calc(100% - 28px);}
+  .fire:disabled{opacity:.35;}
+
+  /* ── sheets ── */
+  .sheet{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;z-index:50;}
+  .sheet-in{background:var(--card);border-radius:18px 18px 0 0;width:100%;padding:18px;max-height:88vh;overflow-y:auto;}
+  .sheet h3{margin:0 0 14px;font-size:17px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .chip{background:var(--card2);border:1px solid var(--div);border-radius:18px;padding:10px 14px;font-size:13px;font-weight:700;}
+  textarea.fld{text-align:left;font-size:16px;min-height:88px;resize:none;}
+  .vbtn{width:100%;background:var(--card2);border:1px solid var(--div);border-radius:12px;font-size:17px;font-weight:800;padding:18px;margin-bottom:10px;text-align:left;}
+  .banner{background:var(--red);color:#fff;font-size:13px;font-weight:800;padding:10px 14px;text-align:center;}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));
+         background:#000;border:1px solid var(--div);border-radius:12px;padding:14px 20px;font-size:15px;font-weight:800;z-index:80;max-width:88vw;text-align:center;}
+</style>
+</head>
+<body>
+
+<div id="banner" class="banner hide">Hors connexion — vérifiez le Wi-Fi</div>
+
+<!-- ══ PAIRING ══ -->
+<div id="scr-pair" class="body">
+  <div class="pair">
+    <h1>📱 Servio Serveur</h1>
+    <p>Entrez le code à 6 chiffres affiché sur la caisse<br>(Réglages → Tablette serveur)</p>
+    <input class="fld" id="pair-name" placeholder="Nom de la tablette (ex : Ali)" autocomplete="off">
+    <input class="fld code" id="pair-pin" inputmode="none" readonly placeholder="——————">
+    <div class="keypad" id="keypad"></div>
+    <div class="err" id="pair-err"></div>
+    <button class="cta" id="pair-btn" onclick="doPair()">Connecter</button>
+  </div>
+</div>
+
+<!-- ══ TABLES ══ -->
+<div id="scr-tables" class="hide" style="display:flex;flex-direction:column;height:100%">
+  <div class="top">
+    <span class="dot" id="dot1"></span>
+    <div style="flex:1;min-width:0">
+      <div class="t-title" id="shop-name">Servio</div>
+      <div class="t-sub" id="dev-name"></div>
+    </div>
+    <button class="iconbtn" onclick="refresh(true)">↻</button>
+  </div>
+  <div class="body">
+    <div class="secs" id="secs"></div>
+    <div class="grid" id="tables"></div>
+  </div>
+</div>
+
+<!-- ══ ORDER ══ -->
+<div id="scr-order" class="hide" style="display:flex;flex-direction:column;height:100%">
+  <div class="top">
+    <button class="iconbtn" onclick="backToTables()">←</button>
+    <span class="dot" id="dot2"></span>
+    <div style="flex:1;min-width:0">
+      <div class="t-title" id="ord-table">Table</div>
+      <div class="t-sub" id="ord-sub"></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="cats" id="cats"></div>
+    <div class="prods" id="prods"></div>
+  </div>
+  <div class="cart">
+    <div class="cart-h"><span id="cart-count">Nouvelle commande</span><span id="cart-total"></span></div>
+    <div class="cart-l" id="cart-lines"></div>
+    <div class="sent hide" id="sent-box"></div>
+    <button class="fire" id="fire-btn" onclick="sendOrder()" disabled>🍳 Envoyer en préparation</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════
+//  Waiter app — served by the counter till over the shop Wi-Fi.
+//  It knows item ids and quantities. It never knows prices well enough
+//  to be trusted with them: the till prices every line itself.
+// ═══════════════════════════════════════════════════════════════════
+const LS = { token:'servio-waiter-token', name:'servio-waiter-name' };
+let token = localStorage.getItem(LS.token) || '';
+let deviceName = localStorage.getItem(LS.name) || '';
+let SNAP = null;                 // last bootstrap
+let section = '';
+let cat = '';
+let tableId = null;
+let cart = [];                   // [{id,name,e,p,variant,qty,note,key}]
+let noteKey = null;
+let es = null;
+let online = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => Number(n || 0).toFixed(3) + ' ' + (SNAP && SNAP.currency ? SNAP.currency : 'DT');
+
+function toast(msg, ms) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), ms || 2400);
+}
+function setOnline(ok) {
+  online = ok;
+  $('banner').classList.toggle('hide', ok);
+  ['dot1','dot2'].forEach(id => $(id).classList.toggle('ok', ok));
+}
+function show(scr) {
+  ['scr-pair','scr-tables','scr-order'].forEach(id => {
+    const el = $(id);
+    el.classList.toggle('hide', id !== scr);
+    if (id !== 'scr-pair') el.style.display = id === scr ? 'flex' : 'none';
+  });
+}
+
+// ── API ────────────────────────────────────────────────────────────
+async function api(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers['Authorization'] = 'Bearer ' + token;
+  if (o.body) o.headers['Content-Type'] = 'application/json';
+  const r = await fetch(path, o);
+  if (r.status === 401) { unpair(); throw new Error('unpaired'); }
+  const data = await r.json().catch(() => ({ ok:false, error:'Réponse illisible' }));
+  if (!r.ok && data.ok !== true) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+function unpair() {
+  token = ''; localStorage.removeItem(LS.token);
+  if (es) { es.close(); es = null; }
+  show('scr-pair');
+}
+
+// ── pairing ────────────────────────────────────────────────────────
+let pin = '';
+(function buildKeypad(){
+  const ks = ['1','2','3','4','5','6','7','8','9','C','0','⌫'];
+  $('keypad').innerHTML = ks.map(k => `<button data-k="${k}">${k}</button>`).join('');
+  $('keypad').addEventListener('click', e => {
+    const k = e.target && e.target.getAttribute('data-k');
+    if (!k) return;
+    if (k === 'C') pin = '';
+    else if (k === '⌫') pin = pin.slice(0, -1);
+    else if (pin.length < 6) pin += k;
+    $('pair-pin').value = pin;
+  });
+})();
+async function doPair() {
+  const name = ($('pair-name').value || '').trim();
+  if (!name) { $('pair-err').textContent = 'Donnez un nom à la tablette'; return; }
+  if (pin.length !== 6) { $('pair-err').textContent = 'Le code fait 6 chiffres'; return; }
+  $('pair-btn').disabled = true; $('pair-err').textContent = '';
+  try {
+    const r = await fetch('/api/pair', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pin, name }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Échec');
+    token = d.token; deviceName = d.name;
+    localStorage.setItem(LS.token, token);
+    localStorage.setItem(LS.name, deviceName);
+    pin = ''; $('pair-pin').value = '';
+    await boot();
+  } catch (e) {
+    $('pair-err').textContent = e.message || 'Connexion impossible';
+  } finally {
+    $('pair-btn').disabled = false;
+  }
+}
+
+// ── bootstrap + live updates ───────────────────────────────────────
+async function boot() {
+  if (!token) { show('scr-pair'); return; }
+  try {
+    SNAP = await api('/api/bootstrap');
+    setOnline(true);
+    $('shop-name').textContent = SNAP.shop || 'Servio';
+    $('dev-name').textContent = (SNAP.device && SNAP.device.name ? SNAP.device.name : deviceName)
+      + (SNAP.sessionOpen ? '' : ' · caisse fermée');
+    if (!section) section = (SNAP.sections && SNAP.sections[0]) || '';
+    if (!cat) cat = (SNAP.menu && SNAP.menu[0] && SNAP.menu[0].cat) || '';
+    if (tableId === null) { renderTables(); show('scr-tables'); }
+    else { renderOrder(); show('scr-order'); }
+    connectEvents();
+  } catch (e) {
+    if (e.message === 'unpaired') return;
+    setOnline(false);
+    setTimeout(boot, 3000);
+  }
+}
+async function refresh(manual) {
+  if (!token) return;
+  try {
+    SNAP = await api('/api/bootstrap');
+    setOnline(true);
+    if (tableId === null) renderTables(); else renderOrder();
+    if (manual) toast('Actualisé');
+  } catch (e) { if (e.message !== 'unpaired') setOnline(false); }
+}
+function connectEvents() {
+  if (es) es.close();
+  es = new EventSource('/api/events?t=' + encodeURIComponent(token));
+  es.onopen = () => setOnline(true);
+  es.onerror = () => setOnline(false);
+  es.addEventListener('snapshot', () => refresh(false));
+}
+
+// ── tables ─────────────────────────────────────────────────────────
+const T_ICON = { free:'🟩', occupied:'🪑', bill:'💰' };
+const T_LABEL = { free:'Libre', occupied:'Occupée', bill:'Addition' };
+function renderTables() {
+  const tabs = (SNAP.sections && SNAP.sections.length) ? SNAP.sections : [''];
+  if (!tabs.includes(section)) section = tabs[0];
+  $('secs').innerHTML = tabs.map(s => {
+    const busy = (SNAP.tables || []).filter(t => t.section === s && t.status !== 'free').length;
+    return `<button class="sec${s === section ? ' on' : ''}" data-s="${esc(s)}">${esc(s || 'Salle')}${busy ? ' (' + busy + ')' : ''}</button>`;
+  }).join('');
+  const list = (SNAP.tables || []).filter(t => t.section === section);
+  $('tables').innerHTML = list.map(t => `
+    <button class="tbl ${t.status}" data-t="${t.id}">
+      <div class="ic">${T_ICON[t.status] || '🪑'}</div>
+      <div class="tn">Table ${t.id}</div>
+      <div class="ti">${T_LABEL[t.status] || ''}${t.lines ? ' · ' + t.lines + ' art.' : ''}</div>
+      ${t.total > 0 ? `<div class="tt">${money(t.total)}</div>` : ''}
+    </button>`).join('') || '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px">Aucune table</div>';
+}
+$('secs').addEventListener('click', e => {
+  const b = e.target.closest('[data-s]'); if (!b) return;
+  section = b.getAttribute('data-s'); renderTables();
+});
+$('tables').addEventListener('click', e => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  if (!SNAP.sessionOpen) { toast('Caisse fermée — voir le comptoir'); return; }
+  tableId = Number(b.getAttribute('data-t'));
+  cart = [];
+  renderOrder(); show('scr-order');
+});
+function backToTables() {
+  if (cart.length && !confirm('Quitter sans envoyer la commande ?')) return;
+  tableId = null; cart = []; renderTables(); show('scr-tables');
+}
+
+// ── order screen ───────────────────────────────────────────────────
+function currentTable() { return (SNAP.tables || []).find(t => t.id === tableId) || null; }
+function renderOrder() {
+  const t = currentTable();
+  $('ord-table').textContent = 'Table ' + tableId + (t && t.section ? ' · ' + t.section : '');
+  $('ord-sub').textContent = t && t.total > 0 ? 'Déjà servi : ' + money(t.total) : 'Nouvelle commande';
+
+  const cats = SNAP.menu || [];
+  if (!cats.some(c => c.cat === cat)) cat = cats[0] && cats[0].cat;
+  $('cats').innerHTML = cats.map(c =>
+    `<button class="cat${c.cat === cat ? ' on' : ''}" data-c="${esc(c.cat)}">${esc(c.icon || '')} ${esc(c.cat)}</button>`).join('');
+  const cur = cats.find(c => c.cat === cat);
+  $('prods').innerHTML = ((cur && cur.items) || []).map(it => `
+    <button class="prod${it.oos ? ' oos' : ''}" data-i="${esc(it.id)}" ${it.oos ? 'disabled' : ''}>
+      <div class="pe">${esc(it.e || '🍽')}</div>
+      <div class="pn">${esc(it.name)}</div>
+      <div class="pp">${it.v && it.v.length ? 'Tailles' : money(it.p)}</div>
+    </button>`).join('');
+
+  // What the kitchen already has for this table — read-only, so the waiter can
+  // see a round is in progress instead of firing it twice.
+  const already = (t && t.sent && t.sent.length) ? t.sent : null;
+  $('sent-box').classList.toggle('hide', !already);
+  if (already) {
+    $('sent-box').innerHTML = '🍳 <b>Déjà envoyé</b><br>' +
+      already.map(s => esc(s.qty + 'x ' + s.name)).join('<br>');
+  }
+  renderCart();
+}
+$('cats').addEventListener('click', e => {
+  const b = e.target.closest('[data-c]'); if (!b) return;
+  cat = b.getAttribute('data-c'); renderOrder();
+});
+$('prods').addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  const id = b.getAttribute('data-i');
+  const cur = (SNAP.menu || []).find(c => c.cat === cat);
+  const it = cur && cur.items.find(x => x.id === id);
+  if (!it) return;
+  if (it.v && it.v.length) pickVariant(it); else addLine(it, '', it.p);
+});
+function addLine(it, variant, price) {
+  const key = it.id + (variant || '');
+  const ex = cart.find(l => l.key === key);
+  if (ex) ex.qty++;
+  else cart.push({ key, id: it.id, name: it.name, e: it.e, p: price, variant: variant || '', qty: 1, note: '' });
+  renderCart();
+}
+function renderCart() {
+  $('cart-lines').innerHTML = cart.map(l => `
+    <div class="ln">
+      <div class="lq">
+        <button class="qb" data-m="${esc(l.key)}">−</button>
+        <span class="qv">${l.qty}</span>
+        <button class="qb" data-p="${esc(l.key)}">+</button>
+      </div>
+      <div class="li" data-n="${esc(l.key)}">
+        <div class="lname">${esc(l.e || '')} ${esc(l.name)}${l.variant ? ' (' + esc(l.variant) + ')' : ''}</div>
+        <div class="lnote">${l.note ? '📝 ' + esc(l.note) : '+ note'}</div>
+      </div>
+      <button class="ldel" data-d="${esc(l.key)}">✕</button>
+    </div>`).join('');
+  const n = cart.reduce((a, l) => a + l.qty, 0);
+  const sum = cart.reduce((a, l) => a + (l.p || 0) * l.qty, 0);
+  $('cart-count').textContent = n ? n + ' article(s)' : 'Nouvelle commande';
+  $('cart-total').textContent = n ? money(sum) : '';
+  $('fire-btn').disabled = n === 0;
+  $('fire-btn').textContent = n ? `🍳 Envoyer ${n} article(s)` : '🍳 Envoyer en préparation';
+}
+$('cart-lines').addEventListener('click', e => {
+  const t = e.target;
+  const plus = t.closest('[data-p]'), minus = t.closest('[data-m]'),
+        del = t.closest('[data-d]'), note = t.closest('[data-n]');
+  if (plus)  { const l = cart.find(x => x.key === plus.getAttribute('data-p')); if (l) l.qty++; renderCart(); return; }
+  if (minus) { const k = minus.getAttribute('data-m'); const l = cart.find(x => x.key === k);
+               if (l) { l.qty--; if (l.qty <= 0) cart = cart.filter(x => x.key !== k); } renderCart(); return; }
+  if (del)   { cart = cart.filter(x => x.key !== del.getAttribute('data-d')); renderCart(); return; }
+  if (note)  { openNote(note.getAttribute('data-n')); }
+});
+
+// ── sheets: variant + note ─────────────────────────────────────────
+function sheet(html) {
+  const el = document.createElement('div');
+  el.className = 'sheet';
+  el.innerHTML = `<div class="sheet-in">${html}</div>`;
+  el.addEventListener('click', ev => { if (ev.target === el) el.remove(); });
+  document.body.appendChild(el);
+  return el;
+}
+function pickVariant(it) {
+  const el = sheet(`<h3>${esc(it.name)} — taille</h3>` +
+    it.v.map((v, i) => `<button class="vbtn" data-v="${i}">${esc(v.l)} · ${money(v.p)}</button>`).join(''));
+  el.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-v]'); if (!b) return;
+    const v = it.v[Number(b.getAttribute('data-v'))];
+    addLine(it, v.l, v.p);
+    el.remove();
+  });
+}
+const CHIPS = ['Sans sucre','Peu de sucre','Sans glace','Bien chaud','À emporter','Sans lait','Extra chaud','Rapide'];
+function openNote(key) {
+  noteKey = key;
+  const l = cart.find(x => x.key === key); if (!l) return;
+  const el = sheet(`
+    <h3>📝 ${esc(l.name)}</h3>
+    <div class="chips">${CHIPS.map(c => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <textarea class="fld" id="note-ta" placeholder="Note pour la préparation">${esc(l.note)}</textarea>
+    <button class="cta" data-save="1">Enregistrer</button>`);
+  el.addEventListener('click', ev => {
+    const chip = ev.target.closest('[data-chip]');
+    if (chip) {
+      const ta = $('note-ta');
+      ta.value = (ta.value ? ta.value + ', ' : '') + chip.getAttribute('data-chip');
+      return;
+    }
+    if (ev.target.closest('[data-save]')) {
+      l.note = ($('note-ta').value || '').trim().slice(0, 120);
+      el.remove(); renderCart();
+    }
+  });
+}
+
+// ── send ───────────────────────────────────────────────────────────
+let sending = false;
+async function sendOrder() {
+  if (sending || !cart.length) return;
+  sending = true;
+  $('fire-btn').disabled = true;
+  $('fire-btn').textContent = 'Envoi…';
+  // A stable uid so a retry after a timeout cannot double the order.
+  const uid = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  try {
+    const r = await api('/api/order', {
+      method: 'POST',
+      body: JSON.stringify({
+        uid, tableId,
+        items: cart.map(l => ({ id: l.id, variant: l.variant, qty: l.qty, note: l.note })),
+      }),
+    });
+    cart = [];
+    toast('✓ ' + (r.message || 'Commande envoyée'), 2600);
+    await refresh(false);
+    tableId = null; renderTables(); show('scr-tables');
+  } catch (e) {
+    if (e.message !== 'unpaired') toast('⚠ ' + (e.message || 'Envoi impossible'), 3600);
+  } finally {
+    sending = false; renderCart();
+  }
+}
+
+// ── go ─────────────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
+window.addEventListener('online', () => boot());
+window.addEventListener('offline', () => setOnline(false));
+if (token) boot(); else show('scr-pair');
+</script>
+</body>
+</html>

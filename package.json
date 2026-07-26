@@ -22,22 +22,30 @@
     "sharp": "^0.35.3"
   },
   "build": {
-    "appId": "tn.servio.pos",
-    "productName": "Servio POS",
+    "appId": "tn.servio.pos.cafeina",
+    "productName": "Cafeina POS",
     "copyright": "© 2025 Servio OS",
     "asar": true,
     "directories": {
-      "output": "dist"
+      "output": "dist_clients/Cafeina_DELIVERY"
     },
     "files": [
       "core/main.js",
       "core/database.js",
       "core/preload.js",
+      "core/hub.js",
+      "core/waiter.html",
       "index.html",
       "node_modules/sql.js/dist/**"
     ],
     "asarUnpack": [
       "node_modules/sql.js/dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/servio-drawer.exe",
+        "to": "servio-drawer.exe"
+      }
     ],
     "win": {
       "icon": "assets/icon.ico",
@@ -62,11 +70,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Servio POS",
-      "runAfterFinish": true
+      "shortcutName": "Cafeina POS",
+      "runAfterFinish": true,
+      "artifactName": "Cafeina_Setup.exe"
     },
     "portable": {
-      "artifactName": "ServioPOS-portable.exe"
+      "artifactName": "Cafeina_Portable.exe"
     }
   }
 }

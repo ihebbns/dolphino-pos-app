@@ -39,6 +39,24 @@ const IS_DEV = !app.isPackaged || process.env.SERVIO_DEV === '1';
 // focusOnWebView() cannot early-return and performs a real re-focus. Neither
 // call touches OS window z-order, so there is no taskbar/window flash — which
 // is why this is preferred over the old blur()/focus() pair.
+// ── Loop guards ───────────────────────────────────────────────────────
+// The escalation at the bottom of forceRecoverFocus() calls mainWindow.focus().
+// That fires the window's 'focus' event, whose handler schedules ANOTHER
+// forceRecoverFocus() with no depth — free to escalate and call focus() again,
+// round and round for as long as Chromium reports no document focus. Each pass
+// runs setFocusable(false), which leaves the window briefly unable to accept
+// keyboard input, so while that cycle spins the app is dead to mouse AND
+// keyboard. Worst in the first seconds after show()+maximize(), when
+// document.hasFocus() is still false for entirely legitimate reasons.
+//
+// These markers only suppress re-entry that WE caused. Deliberately NOT a
+// cooldown inside forceRecoverFocus(): the print handler calls it three times on
+// purpose (0/100/350 ms) so the cashier never notices, and throttling the
+// function itself would silently swallow those retries.
+let _selfFocusAt = 0;    // we called focus() ourselves; ignore the event it fires
+let _windowShownAt = 0;  // when the window first became visible
+const SELF_FOCUS_IGNORE_MS = 1200;
+const SHOW_SETTLE_MS = 1500;
 function forceRecoverFocus(depth) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -70,6 +88,7 @@ function forceRecoverFocus(depth) {
         try {
           mainWindow.setFocusable(false);
           mainWindow.setFocusable(true);
+          _selfFocusAt = Date.now();   // the focus() below is ours, not the user's
           mainWindow.focus();
         } catch (e) {}
         setTimeout(() => forceRecoverFocus(1), 30);
@@ -284,6 +303,7 @@ function createWindow() {
       mainWindow.maximize();
     }
     mainWindow.show();
+    _windowShownAt = Date.now();
     mainWindow.focus();
     mainWindow.webContents.focus();
     // Background services are NOT started here. 'ready-to-show' fires at first
@@ -734,24 +754,48 @@ Write-Host "OK:$p bytes:$written"`
 // A kick landing mid warm-up used to trigger a full one-shot: a SECOND
 // PowerShell compiling the same C# alongside the one already compiling it.
 // Waiting briefly for the service that is nearly ready is far cheaper.
-// ── Deferred start-up work ────────────────────────────────────────────
-// Only the DRAWER service is deferred, and only because it spawns a PowerShell
-// process that JIT-compiles C#.
+// ── When to warm the cash-drawer service ──────────────────────────────
+// Warming it spawns a PowerShell that JIT-compiles the C# raw-print helper.
+// Measured on a real machine: ~890 ms of solid CPU. Land that a second after the
+// window appears and it collides with the renderer settling, which showed up as
+// a short freeze exactly when the cashier first tries to tap — the window is
+// painted and looks ready, then stalls for about a second, then behaves.
 //
-// SQLite is deliberately NOT deferred. The renderer awaits it at login
-// (hydrateBusinessState reads today's sales to continue the ticket numbering),
-// so every millisecond it starts late is a millisecond the cashier stares at a
-// PIN pad that has already accepted the code. It used to be deferred here along
-// with the drawer, which is why the first screen felt frozen for seconds. The
-// original reason for deferring — a renderer busy parsing 1.9 MB of embedded
-// logo — no longer exists now that the page is 254 KB.
-let _bgStarted = false;
-function startBackgroundServices() {
-  if (_bgStarted) return;
-  _bgStarted = true;
-  setTimeout(startDrawerService, 250);
+// It does not need to be early. Nothing can be sold before someone enters a PIN,
+// and even then the items have to be rung up first, so there are seconds of
+// menu-browsing before the first Encaisser. The spike is moved into that window.
+//
+// SQLite is the opposite case and stays in app.whenReady(): the renderer AWAITS
+// it at login to continue the ticket numbering, so every millisecond it starts
+// late is a millisecond the cashier stares at an accepted PIN.
+let _warmTimer = null;
+let _warmDone = false;
+function scheduleDrawerWarm(delayMs, why) {
+  if (_warmDone) return;
+  if (_warmTimer) clearTimeout(_warmTimer);   // a later, better trigger wins
+  _warmTimer = setTimeout(() => {
+    _warmDone = true;
+    console.log('[CashDrawer] warming (' + why + ')');
+    startDrawerService();
+  }, delayMs);
 }
-ipcMain.on('app-interactive', () => startBackgroundServices());
+
+// The UI is up. This is only a long backstop in case nobody ever logs in; the
+// PowerShell spawn deliberately does NOT happen here.
+ipcMain.on('app-interactive', () => scheduleDrawerWarm(45000, 'idle backstop'));
+
+// A cashier logged in. With the precompiled helper there is no compile to pay
+// for — just page in the .NET runtime with a no-op call, which is a 5 KB process
+// and a few hundred milliseconds, not 890 ms of CPU. The PowerShell service is
+// only warmed when the helper is missing.
+ipcMain.on('app-logged-in', () => {
+  if (hasDrawerHelper()) setTimeout(prewarmDrawerHelper, 1500);
+  else scheduleDrawerWarm(2500, 'after login, no helper');
+});
+
+// Kept for the existing call site in createWindow(); the drawer is no longer
+// started from the start-up path at all.
+function startBackgroundServices() {}
 
 function waitForDrawerReady(ms) {
   return new Promise(resolve => {
@@ -764,9 +808,90 @@ function waitForDrawerReady(ms) {
   });
 }
 
+// ── Precompiled drawer helper: the fast path ──────────────────────────
+// servio-drawer.exe is the same winspool code PowerShell used to Add-Type at
+// runtime, except compiled at BUILD time (see assets/servio-drawer.cs). That
+// removes the ~890 ms JIT compile rather than relocating it: there is nothing to
+// warm, so no moment in the app's life has a CPU spike to hide.
+//
+// Measured: ~50 ms per kick, ~300 ms on the very first one while Windows pages
+// in the .NET runtime. The PowerShell service below is kept as a fallback for
+// any install where the helper is missing, so this cannot regress the drawer.
+const DRAWER_BYTES_HEX = '1B,70,00,19,FA';
+function drawerHelperPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'servio-drawer.exe')
+    : path.join(__dirname, '..', 'assets', 'servio-drawer.exe');
+}
+let _helperExists = null;
+function hasDrawerHelper() {
+  if (_helperExists === null) {
+    try { _helperExists = fs.existsSync(drawerHelperPath()); } catch (e) { _helperExists = false; }
+    if (!_helperExists) console.log('[CashDrawer] helper exe absent — falling back to PowerShell');
+  }
+  return _helperExists;
+}
+
+// Printer resolution moves out of PowerShell too: Electron already knows the
+// printer list, and the answer is cached so a kick never waits on enumeration.
+let _drawerPrinter = null;
+async function resolveDrawerPrinter() {
+  if (_drawerPrinter) return _drawerPrinter;
+  const cfg = hwConfig();
+  if (cfg.drawerPrinter) { _drawerPrinter = cfg.drawerPrinter; return _drawerPrinter; }
+  try {
+    const wc = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null;
+    if (wc) _drawerPrinter = await resolveReceiptPrinter(wc);
+  } catch (e) {}
+  return _drawerPrinter;
+}
+
+function kickViaHelper(printer) {
+  return new Promise(resolve => {
+    execFile(drawerHelperPath(), [printer, DRAWER_BYTES_HEX],
+      { timeout: 6000, windowsHide: true }, (err, stdout) => {
+        const out = String(stdout || '').trim();
+        resolve({ ok: !err && out.indexOf('OK:') === 0, log: out || (err && err.message) || '' });
+      });
+  });
+}
+
+/**
+ * Pages in the .NET runtime with a harmless no-printer invocation, so the first
+ * real kick of the day is ~50 ms instead of ~300 ms. Touches no printer: an
+ * empty name returns ERR:NO_PRINTER immediately.
+ */
+function prewarmDrawerHelper() {
+  if (!hasDrawerHelper()) return;
+  try {
+    execFile(drawerHelperPath(), [''], { timeout: 6000, windowsHide: true }, () => {
+      console.log('[CashDrawer] helper prewarmed');
+    });
+  } catch (e) {}
+}
+
 // IPC contract UNCHANGED: resolves { ok, log }. Renderer/preload API unchanged.
 ipcMain.handle('open-cash-drawer', async () => {
   const _t0 = Date.now();
+
+  // Fast path: no PowerShell, no compile, no warm-up.
+  if (hasDrawerHelper()) {
+    const printer = await resolveDrawerPrinter();
+    if (printer) {
+      const res = await kickViaHelper(printer);
+      if (res.ok) {
+        console.log('[CashDrawer] helper kick ' + (Date.now() - _t0) + 'ms', res.log);
+        setTimeout(forceRecoverFocus, 300);
+        return { ok: true, log: res.log, ms: Date.now() - _t0 };
+      }
+      // A stale cached printer is the likely cause; drop it and let the
+      // PowerShell path below have a go before giving up on this kick.
+      console.log('[CashDrawer] helper failed, falling back:', res.log);
+      _drawerPrinter = null;
+    } else {
+      console.log('[CashDrawer] no physical printer resolved for the drawer');
+    }
+  }
 
   // Give the warming service a moment before paying for a one-shot compile.
   if (!drawerProc) startDrawerService();
@@ -922,6 +1047,38 @@ ipcMain.handle('db-get-sessions', async () => {
   catch(e) { return []; }
 });
 
+// ── WAITER HUB (LAN tablets) ──────────────────────────────────────────
+// The counter till serves a waiter app to tablets on the shop Wi-Fi and prints
+// their orders on the printer it already owns. See core/hub.js for the trust
+// model; nothing listens until the owner switches it on.
+const hub = require('./hub');
+
+function sendToRenderer(channel, ...args) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  try { mainWindow.webContents.send(channel, ...args); return true; }
+  catch (e) { return false; }
+}
+
+function initHub() {
+  hub.init({
+    dataDir: userDataPath(),
+    // An order only counts once the renderer has priced it, merged it into the
+    // table and printed it — so it goes there and the HTTP reply waits.
+    deliverOrder: order => {
+      if (!sendToRenderer('hub-order', order)) throw new Error('renderer not ready');
+    },
+    notifyStatus: state => sendToRenderer('hub-status', state),
+  });
+}
+
+ipcMain.handle('hub-state',       () => hub.publicState());
+ipcMain.handle('hub-set-enabled', (_e, on)   => hub.setEnabled(on));
+ipcMain.handle('hub-set-port',    (_e, port) => hub.setPort(port));
+ipcMain.handle('hub-regen-pin',   () => hub.regenPin());
+ipcMain.handle('hub-revoke',      (_e, id)   => hub.revokeDevice(id));
+ipcMain.on('hub-snapshot',     (_e, snap)        => hub.setSnapshot(snap));
+ipcMain.on('hub-order-result', (_e, uid, result) => hub.resolveOrder(uid, result));
+
 app.whenReady().then(() => {
   // ── Startup order matters ────────────────────────────────────────────
   // Everything below used to run BEFORE createWindow(), on the main process,
@@ -946,6 +1103,10 @@ app.whenReady().then(() => {
   // Window second, so the renderer can start parsing and painting immediately.
   createWindow();
 
+  // Hub after the window: it only binds a socket if the owner enabled it, and
+  // it needs a renderer to hand orders to.
+  try { initHub(); } catch (e) { console.error('[Hub] init failed:', e && e.message); }
+
   // ── FOCUS RECOVERY (Electron keyboard fix) ──────────────────────────
   // Problem: After printing, cash drawer, or child windows, Electron loses
   // internal Chromium focus. Inputs stop receiving keyboard events.
@@ -963,6 +1124,10 @@ app.whenReady().then(() => {
   // receive keystrokes. The old check skipped repair in exactly that case.
   setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) return;
+    // Still activating after show(): hasFocus() is legitimately false, nothing broken.
+    if (_windowShownAt && Date.now() - _windowShownAt < SHOW_SETTLE_MS) return;
+    // An escalation we triggered is in flight; let it finish instead of piling on.
+    if (Date.now() - _selfFocusAt < SELF_FOCUS_IGNORE_MS) return;
     mainWindow.webContents.executeJavaScript('document.hasFocus()')
       .then(hasFocus => {
         if (!hasFocus && mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) {
@@ -977,6 +1142,10 @@ app.whenReady().then(() => {
   // helper which guarantees a transition.
   mainWindow.on('focus', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
+    // THIS is the loop: our own escalation called focus(), which lands here, which
+    // schedules another recovery, which escalates again. Ignore our own activation.
+    if (Date.now() - _selfFocusAt < SELF_FOCUS_IGNORE_MS) return;
+    if (_windowShownAt && Date.now() - _windowShownAt < SHOW_SETTLE_MS) return;
     setTimeout(() => forceRecoverFocus(), 150);
   });
 
@@ -1016,5 +1185,6 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   stopDrawerService();
+  try { hub.stop(); } catch (e) {}
   closeDatabase();
 });
