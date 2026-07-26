@@ -2114,23 +2114,11 @@ function removeItemPhoto(catKey, itemId){
   if(it){ delete it.img; saveMenuToStorage(); renderMenuManage(); if(cat===catKey) buildGrid(); flash('✓ Photo supprimée'); }
 }
 function toggleItemStock(c,id,checked){
+  // Stock tracking mode is managed from the back-office only (servio.tn/catalog).
+  // The checkbox shows state pulled from the server. A cashier cannot change it.
   const it=MENU[c].items.find(x=>x.id===id);
-  if(it){
-    it.tracked=checked;
-    saveMenuToStorage();
-    flash(checked?'📦 Stock activé':'📦 Stock désactivé');
-    syncTrackMode(id, checked ? 'stock' : 'none');
-  }
-}
-async function syncTrackMode(itemId, mode){
-  if(!SYNC_ENABLED) return;
-  try{
-    await fetch(SYNC_API_URL.replace('/api/sync','/api/me/catalog'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: SYNC_API_KEY, item_id: itemId, track_mode: mode })
-    });
-  }catch(e){}
+  if(it){ setTimeout(()=>{ try{ renderMenuManage(); }catch(e){} }, 50); }
+  flash('📦 Le suivi stock se gère depuis servio.tn');
 }
 // Cost is web-owned (entered on the dashboard, flows web → POS). Kept as a
 // no-op for backward compatibility with anything that still calls it.
