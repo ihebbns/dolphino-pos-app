@@ -1973,6 +1973,9 @@ window.addEventListener('online', async () => {
     const stockBefore    = JSON.stringify(loadStock());
 
     await pullCloudCosts();
+    // Queues behind the flushWalletsPush() triggered above (same lock), so a
+    // recharge this till just pushed marks itself sent before this pull runs.
+    try{ await pullCloudWallets(); }catch(e){}
 
     const rupturesAfter  = JSON.stringify(loadRupture());
     const recipeAfter    = JSON.stringify(CLOUD_STOCK_RECIPE);
@@ -4563,6 +4566,65 @@ function ensureWalletIds(wallets){
   return changed;
 }
 
+// ── Pull cards/recharges created on the WEB dashboard down to this till ────
+// The owner can now create a card or recharge one from the back-office (see
+// action 'createClient'/'webTopup' in /api/me/wallet). Without this, a card
+// made on the web would never appear here and a web recharge would sit
+// invisible until the SAME till happened to push a balance that collided
+// with it — the cashier needs to be able to select and pay with it today.
+//
+// Merge, not overwrite: the server's balance is authoritative for whatever
+// IT has seen, but this till may hold a spend/topup it hasn't managed to
+// push yet (offline, or the push simply hasn't fired). Blindly replacing
+// the local balance with the server's would silently erase that unsent
+// movement. Instead: local balance = server balance + unsent local deltas —
+// once those unsent movements DO push through, the server lands on the same
+// number this computed locally, so nothing drifts.
+async function pullCloudWallets(){ return withWalletSyncLock(_pullCloudWalletsLocked); }
+async function _pullCloudWalletsLocked(){
+  if(!SYNC_ENABLED) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/wallet') + '?key=' + SYNC_API_KEY, {
+      headers: { 'X-Api-Key': SYNC_API_KEY }
+    });
+    const data = await res.json();
+    if(!data || !data.ok || !Array.isArray(data.clients)) return;
+
+    const wallets = loadWallets();
+    const byCid = {};
+    wallets.forEach(c => { if(c.cid) byCid[c.cid] = c; });
+    let changed = false;
+
+    for(const sc of data.clients){
+      if(!sc || !sc.client_key) continue;
+      let local = byCid[sc.client_key];
+      if(!local){
+        // New card, created on the web — bring it down so it's selectable at checkout.
+        local = { cid: sc.client_key, name: sc.name || '', phone: sc.phone || '', balance: 0, history: [] };
+        wallets.push(local);
+        byCid[sc.client_key] = local;
+        changed = true;
+      }
+      const unsentDelta = (local.history||[]).filter(h => h && !h.sent).reduce((sum, h) => {
+        if(h.type === 'topup' || h.type === 'bonus') return sum + (Number(h.amount) || 0);
+        if(h.type === 'spend') return sum - (Number(h.amount) || 0);
+        return sum;
+      }, 0);
+      const merged = Math.round((Number(sc.balance) + unsentDelta) * 1000) / 1000;
+      if(local.balance !== merged || local.name !== sc.name || (sc.archived && !local.archived)){
+        local.balance = merged;
+        if(sc.name) local.name = sc.name;
+        if(sc.phone) local.phone = sc.phone;
+        if(sc.archived) local.archived = true;
+        changed = true;
+      }
+    }
+    if(changed){
+      try{ localStorage.setItem(WALLET_KEY, JSON.stringify(wallets)); }catch(e){}
+    }
+  }catch(e){ /* offline — retried on next poll */ }
+}
+
 function loadWallets(){
   try{
     const r=localStorage.getItem(WALLET_KEY);
@@ -4587,7 +4649,27 @@ function pushWalletsToCloud(){
   if(_walletPushTimer) clearTimeout(_walletPushTimer);
   _walletPushTimer = setTimeout(sendWallets, 2500);
 }
-async function sendWallets(){
+
+// ── Wallet sync mutex ────────────────────────────────────────────────────
+// sendWallets() and pullCloudWallets() both do an unsynchronized
+// read-JS-mutate-write of the SAME WALLET_KEY localStorage entry, each
+// spanning a network round-trip (an await). If they interleave — e.g. the
+// 30-min pull timer fires while a recharge's debounced push is still
+// in-flight — pullCloudWallets()'s "server balance + unsent local deltas"
+// merge can double-count a movement the server already applied but this
+// till hasn't finished marking sent=true for yet, and whichever function's
+// write lands last silently clobbers the other's. A plain promise chain
+// forces the two to always run strictly one after another — never
+// concurrently — which removes the race without needing a real mutex.
+let _walletSyncChain = Promise.resolve();
+function withWalletSyncLock(fn){
+  const run = _walletSyncChain.then(fn, fn);
+  _walletSyncChain = run.catch(()=>{});
+  return run;
+}
+
+async function sendWallets(){ return withWalletSyncLock(_sendWalletsLocked); }
+async function _sendWalletsLocked(){
   if(!SYNC_ENABLED) return;
   let wallets = [];
   try{ wallets = JSON.parse(localStorage.getItem(WALLET_KEY) || '[]'); }catch(e){ return; }
@@ -4607,6 +4689,9 @@ async function sendWallets(){
           uid: h.uid, cid: c.cid, name: c.name,
           kind: h.type === 'spend' ? 'spend' : (h.type === 'topup' ? 'topup' : 'adjust'),
           delta: +h.amount || 0,
+          // Real cash paid, only meaningful on a topup — see paid_amount on
+          // the server. Never the bonus-inclusive `amount`/delta.
+          payAmount: h.type === 'topup' && h.payAmount != null ? +h.payAmount : undefined,
           pay_method: h.payMethod || '',
           items_summary: h.items || '',
           sale_num: h.saleNum,
@@ -4627,14 +4712,20 @@ async function sendWallets(){
     });
     const data = await res.json();
     if(data && data.ok){
+      // Re-read localStorage fresh rather than reusing the `wallets` array
+      // captured before the await — belt-and-suspenders alongside the lock
+      // above, in case anything else ever writes WALLET_KEY without going
+      // through this same lock.
       const done = new Set(movements.map(m => m.uid));
+      let fresh = [];
+      try{ fresh = JSON.parse(localStorage.getItem(WALLET_KEY) || '[]'); }catch(e){ fresh = wallets; }
       let touched = false;
-      for(const c of wallets){
+      for(const c of fresh){
         for(const h of (c.history||[])){
           if(h && done.has(h.uid) && !h.sent){ h.sent = true; touched = true; }
         }
       }
-      if(touched){ try{ localStorage.setItem(WALLET_KEY, JSON.stringify(wallets)); }catch(e){} }
+      if(touched){ try{ localStorage.setItem(WALLET_KEY, JSON.stringify(fresh)); }catch(e){} }
     }
   }catch(e){ /* offline — retried on reconnect */ }
 }
@@ -4695,7 +4786,7 @@ function confirmWalletRecharge(idx){
   const credited=Math.round(amount*(1+WALLET_TOPUP_BONUS)*1000)/1000;
   const nowRch=new Date();
   c.balance+=credited;
-  c.history.push({type:'topup',amount:credited,iso:nowRch.toISOString(),payMethod:'cash',
+  c.history.push({type:'topup',amount:credited,payAmount:amount,iso:nowRch.toISOString(),payMethod:'cash',
     by:USERS[currentUser]?.name||'',sessionId:currentSession?.sid||'',
     date:nowRch.toLocaleDateString('fr-TN'),time:nowRch.toLocaleTimeString('fr-TN'),
     reason:'Recharge '+f(amount)+' DT + bonus '+f(credited-amount)+' DT'});
@@ -4822,6 +4913,15 @@ setInterval(checkLicense, 30 * 60 * 1000);
 if(SYNC_ENABLED){
   setTimeout(()=>{ try{ pullCloudCosts(); }catch(e){} }, 8000);
   setInterval(()=>{ try{ pullCloudCosts(); }catch(e){} }, 30 * 60 * 1000);
+}
+
+// ── Pull wallet cards/recharges created on the web (offline-safe) ──
+// Same cadence as pullCloudCosts — a card or recharge made from the
+// dashboard becomes usable at this till within ~30 min, or immediately
+// on next launch.
+if(SYNC_ENABLED){
+  setTimeout(()=>{ try{ pullCloudWallets(); }catch(e){} }, 9000);
+  setInterval(()=>{ try{ pullCloudWallets(); }catch(e){} }, 30 * 60 * 1000);
 }
 
 // ── Publish POS-owned menu + prices upward (offline-safe) ──
