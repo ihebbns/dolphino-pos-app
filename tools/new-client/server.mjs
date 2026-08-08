@@ -46,7 +46,7 @@ function readWebEnv() {
 // what PUT /api/admin/clients does server-side (same table, same columns,
 // same bcrypt cost) — avoids depending on the deployed Vercel env matching
 // this machine's local ADMIN_SECRET_KEY, which isn't guaranteed.
-async function createWebDashboard({ name, email, password, apiKey, city, phone, tagline, logo, zones }) {
+async function createWebDashboard({ name, email, password, apiKey, city, phone, tagline, logo, zones, modules }) {
   const env = readWebEnv();
   if (!env.DATABASE_URL) return { ok: false, error: 'DATABASE_URL introuvable (servio-web/.env.local manquant ou incomplet)' };
   try {
@@ -55,7 +55,15 @@ async function createWebDashboard({ name, email, password, apiKey, city, phone, 
     const bcrypt = bcryptMod.default || bcryptMod;
     const sql = neon(env.DATABASE_URL);
     const hash = await bcrypt.hash(password, 10);
-    const config = { tagline, logo, ...zones };
+    // This is the SERVER-side source of truth checkLicense() ends up trusting
+    // (see DEFAULT_MODULES in app/api/check/route.ts) — CLIENT_CONFIG.modules
+    // baked into the EXE is only the offline fallback until the till's first
+    // successful check-in. Without writing modules here too, a client created
+    // through this wizard with wallet/onlineOrders checked would build an EXE
+    // that OFFERS them locally, then have the server immediately overrule it
+    // back to off the moment it's online — exactly the kind of two-layer
+    // mismatch this call exists to prevent.
+    const config = { tagline, logo, ...zones, ...(modules ? { modules } : {}) };
     await sql`
       INSERT INTO restaurants (name, owner_email, password_hash, api_key, city, phone, plan, config)
       VALUES (${name}, ${email.toLowerCase()}, ${hash}, ${apiKey}, ${city}, ${phone}, 'active', ${JSON.stringify(config)})
@@ -88,8 +96,8 @@ const BASES = {
   },
   counter: {
     label: 'Comptoir / Fast-food',
-    hint: 'Vente directe au comptoir, sans plan de salle — comme DOLPHINO.',
-    file: 'clients/dolphino/index.html',
+    hint: 'Vente directe au comptoir, sans plan de salle — comme LA COUPOLE : crédit, stock, fidélité, borne self-service + commande client par téléphone, badge RFID, tickets cuisine par zone, annulation/remboursement.',
+    file: 'clients/La_Coupole/index.html',
     zones: true,
     maxZones: 2,
     retail: false,
@@ -174,6 +182,11 @@ function buildConfigBlock(baseKey, cfg) {
     if (cfg.cardEnabled === false) moduleFlags.push('card: false');
     if (cfg.creditEnabled === false) moduleFlags.push('credit: false');
     if (cfg.stockEnabled === false) moduleFlags.push('stockTracking: false');
+    // Only meaningful on bases that actually carry the wallet/kiosk code —
+    // isWalletEnabled()/isOnlineOrdersEnabled() exist on La Coupole-derived
+    // (counter) clients, not the older table/retail bases.
+    if (cfg.walletEnabled === false) moduleFlags.push('wallet: false');
+    if (cfg.onlineOrdersEnabled === false) moduleFlags.push('onlineOrders: false');
   }
   if (moduleFlags.length) {
     lines.push('');
@@ -357,10 +370,19 @@ const server = http.createServer(async (req, res) => {
           zone1Label: config.zone1Label, zone2Label: config.zone2Label,
           zone1Cats: config.zone1Cats, zone2Cats: config.zone2Cats,
         };
+        // Only write keys the wizard actually offered a checkbox for — a
+        // retail base never showed credit/stock/wallet toggles, so those stay
+        // undefined here rather than being written as an incorrect false.
+        const modules = {};
+        if (typeof config.creditEnabled === 'boolean') modules.credit = config.creditEnabled;
+        if (typeof config.stockEnabled === 'boolean') modules.stockTracking = config.stockEnabled;
+        if (typeof config.walletEnabled === 'boolean') modules.wallet = config.walletEnabled;
+        if (typeof config.onlineOrdersEnabled === 'boolean') modules.onlineOrders = config.onlineOrdersEnabled;
         web = await createWebDashboard({
           name: config.name, email: config.webEmail, password: config.webPassword,
           apiKey: config.syncKey, city: config.city, phone: config.phone,
           tagline: config.tagline, logo: config.logo, zones,
+          modules: Object.keys(modules).length ? modules : undefined,
         });
       }
 

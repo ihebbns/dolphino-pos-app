@@ -249,8 +249,13 @@ const FEATURE_DEFS = {
   card:    { label:'💳 Carte bancaire (TPE)', desc:'Bouton de paiement carte à la caisse.', bases:['table'] },
   credit:  { label:'📒 Crédit clients', desc:'Vente à crédit + suivi des dettes clients.', bases:['table','counter'] },
   stock:   { label:'📦 Suivi de stock à l\'unité', desc:'Compter les quantités, alertes de rupture.', bases:['table','counter'] },
+  // Only on 'counter' (La Coupole) for now — the wallet/kiosk code isn't in
+  // the 'table' base yet. Add 'table' here once that variant exists.
+  wallet:  { label:'💳 Fidélité (cartes prépayées)', desc:'Solde client, bonus 30% à la recharge, récompenses mensuelles.', bases:['counter'] },
+  onlineOrders: { label:'🌐 Commandes en ligne (borne + téléphone)', desc:'Borne tactile en libre-service + page de commande client par téléphone, suivi en direct.', bases:['counter'] },
 };
-let features = { card:true, credit:true, stock:true };
+let features = { card:true, credit:true, stock:true, wallet:true, onlineOrders:true };
+function featureApplies(key){ return !!FEATURE_DEFS[key]?.bases.includes(baseKey); }
 function renderFeatures(){
   const el = document.getElementById('features-area');
   const rows = [`
@@ -589,9 +594,17 @@ function collectConfig(){
     zone1Label: 'CUISINE 1',
     zone2Label: 'CUISINE 2',
     zone3Label: 'CUISINE 3',
-    cardEnabled: features.card,
-    creditEnabled: features.credit,
-    stockEnabled: features.stock,
+    // Gated by base-applicability, not just the checkbox's last value — a
+    // feature never shown for this base (e.g. wallet on 'retail') must come
+    // through as undefined, not a stale `true` left over from another base
+    // the admin looked at first. /api/create only writes a server-side
+    // module flag when it sees an actual boolean, so this is what keeps a
+    // client whose EXE has no wallet code from getting wallet turned on.
+    cardEnabled: featureApplies('card') ? features.card : undefined,
+    creditEnabled: featureApplies('credit') ? features.credit : undefined,
+    stockEnabled: featureApplies('stock') ? features.stock : undefined,
+    walletEnabled: featureApplies('wallet') ? features.wallet : undefined,
+    onlineOrdersEnabled: featureApplies('onlineOrders') ? features.onlineOrders : undefined,
   };
 }
 
