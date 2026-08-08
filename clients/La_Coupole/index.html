@@ -2917,6 +2917,7 @@ async function loginSuccess(role){
 }
 function logout(){
   if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
+  if(pendingOnlineOrderPayment) postOnlineOrderAction(pendingOnlineOrderPayment.id,'release'); // must fire before currentUser is cleared (actor comes from it)
   currentUser=null;currentPinUser=null;pinBuffer='';
   items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';pendV=null;noteTarget=null;lastOrderData=null;pendingOnlineOrderPayment=null;
   saveState();
@@ -3063,7 +3064,7 @@ function renderOrd(){
 }
 function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
 function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;if(pendingOnlineOrderPayment)postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
 
 // ═══════════════ HELD COUNTER ORDERS ═══════════════
 // A held order is only a saved draft. It cannot print, affect cash, create a
@@ -4994,13 +4995,19 @@ function showOnlineOrders(){
 
   const unpaidRows = onlineOrdersUnpaid.length ? onlineOrdersUnpaid.map(o=>{
     const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+    // claimed_by another till → show locked, not clickable. Claimed by THIS
+    // till's own user (e.g. modal reopened mid-flow) reads as free to retry —
+    // encaisserOnlineOrder()'s claim call is idempotent for the same actor.
+    const myName = USERS[currentUser]?.name||'';
+    const lockedByOther = o.claimed_by && o.claimed_by !== myName;
     return `<div style="padding:8px 0;border-bottom:1px solid var(--div)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel} · ${o.client_phone||'—'}</span>
         <span style="font-size:12px;font-weight:700;color:var(--red)">${f(o.total)} DT</span>
       </div>
+      ${lockedByOther?`<div style="font-size:10px;color:var(--orange);margin-bottom:6px">🔒 En cours à une autre caisse (${o.claimed_by})</div>`:''}
       <div style="display:flex;align-items:center;gap:10px">
-        <button onclick="encaisserOnlineOrder(${o.id})" style="flex:1;padding:7px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🧾 Encaisser</button>
+        <button onclick="encaisserOnlineOrder(${o.id})" ${lockedByOther?'disabled':''} style="flex:1;padding:7px;background:${lockedByOther?'var(--card)':'linear-gradient(135deg,var(--gold),var(--gold-l))'};border:${lockedByOther?'1px solid var(--div)':'none'};border-radius:6px;color:${lockedByOther?'var(--muted)':'#fff'};font-size:11px;font-weight:700;cursor:${lockedByOther?'not-allowed':'pointer'}">🧾 Encaisser</button>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:var(--muted)" onclick="markOnlineOrderPaid(${o.id})" title="Marquer payée sans repasser par l'encaissement (cas particulier)">
           <input type="checkbox" style="width:15px;height:15px;cursor:pointer"> déjà réglée
         </label>
@@ -5070,7 +5077,20 @@ async function acceptOnlineOrder(id){
 async function encaisserOnlineOrder(id){
   const order = onlineOrdersUnpaid.find(o=>String(o.id)===String(id));
   if(!order) return;
-  if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')) return;
+  // Claim it BEFORE touching the cart — with more than one till, two
+  // cashiers could otherwise both pull this same order in and both
+  // complete a real sale for it (duplicate stock deduction, duplicate
+  // receipt). The server only lets one till hold the claim at a time.
+  const claimed = await postOnlineOrderAction(id,'claim');
+  if(!claimed){
+    flash('⚠ Cette commande est en cours d\'encaissement sur une autre caisse');
+    pollOnlineOrders();
+    return;
+  }
+  if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')){
+    postOnlineOrderAction(id,'release'); // claimed but not used — give it back immediately
+    return;
+  }
   items = (order.items_json||[]).map(it=>({
     key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
     variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat:''
