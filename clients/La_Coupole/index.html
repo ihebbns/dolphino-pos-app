@@ -2892,7 +2892,7 @@ async function loginSuccess(role){
 function logout(){
   if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
   currentUser=null;currentPinUser=null;pinBuffer='';
-  items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';pendV=null;noteTarget=null;lastOrderData=null;
+  items=[];disc=0;payMode='cash';orderType='place';cliName='';cliTel='';pendV=null;noteTarget=null;lastOrderData=null;pendingOnlineOrderPayment=null;
   saveState();
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('hdr').style.display='none';
@@ -3037,7 +3037,7 @@ function renderOrd(){
 }
 function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
 function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
 
 // ═══════════════ HELD COUNTER ORDERS ═══════════════
 // A held order is only a saved draft. It cannot print, affect cash, create a
@@ -3286,10 +3286,21 @@ function autoPrintAll(od){
   // before the SQLite save — so it is intentionally NOT opened here.
   // Client ticket prints immediately and automatically — no manual click needed.
   doPrint();
-  // Kitchen ticket(s) queued right after, staggered so the client ticket
-  // reaches the printer first (see delays inside autoPrintKitchen). This is
-  // Dolphino's own zone1/zone2 routing — unchanged from before this rebuild.
-  autoPrintKitchen(od);
+  if(pendingOnlineOrderPayment){
+    // This sale is an online order being paid for at the counter — its
+    // kitchen ticket already printed the moment staff hit "Accepter", so
+    // printing it again here would look like a duplicate order to the
+    // kitchen. Completing the sale (any payment method) IS "the customer
+    // paid" — mark it paid server-side now rather than relying on staff to
+    // remember a separate step.
+    markOnlineOrderPaid(pendingOnlineOrderPayment.id, true);
+    pendingOnlineOrderPayment = null;
+  } else {
+    // Kitchen ticket(s) queued right after, staggered so the client ticket
+    // reaches the printer first (see delays inside autoPrintKitchen). This is
+    // Dolphino's own zone1/zone2 routing — unchanged from before this rebuild.
+    autoPrintKitchen(od);
+  }
 }
 
 // ═══════════════ KITCHEN TICKETS (2 ZONES) ═══════════════
@@ -4863,16 +4874,30 @@ function showWalletHistory(idx){
 
 // ═══════════════ ONLINE ORDERS (public ordering page → till queue) ═══════
 // Staff-driven only: a customer's public order lands as 'pending' server-side
-// and never auto-completes. "Accepter" loads the order's items into this
-// till's normal cart so the sale goes through the EXACT same encaisser() path
-// (stock deduction, kitchen tickets, receipt) as an order typed by hand —
-// see app/api/me/online-orders/route.ts on the web side for the full contract.
+// and never auto-completes.
+//
+// "Accepter" sends it straight to the kitchen (zone-routed ticket, same
+// printer split as a normal order) and does NOT touch the cart, stock, or
+// sales — a real kiosk/counter order starts cooking the moment it's
+// confirmed, independent of when the customer actually pays. It moves to
+// the "Non payées" list, in full (with items), so it isn't lost if the
+// cashier is mid-transaction with someone else.
+//
+// Payment happens later, when the cashier taps "🧾 Encaisser" on that order:
+// its items load into the cart and go through the EXACT same encaisser()
+// path (stock deduction, receipt) as a hand-typed order — but the kitchen
+// ticket is skipped there since it already printed at accept time. The
+// order is marked paid automatically the moment that sale completes, not
+// by a disconnected manual flag — the manual "✓ Payée" checkbox stays as a
+// fallback for edge cases (e.g. cash handed over before the order's pulled
+// up), not the primary path.
+// See app/api/me/online-orders/route.ts on the web side for the full contract.
 let onlineOrdersPending = [];
-// Accepted orders (kitchen already has them) that haven't been paid at the
-// counter yet — orders never carry a payment step at submission (phone or
-// kiosk), so this is the till's own reminder list, separate from accept/
-// reject status, until a cashier checks "Payée" once cash/card is settled.
 let onlineOrdersUnpaid = [];
+// Set right before an unpaid online order's items are loaded into the cart
+// for checkout — read by autoPrintAll() to skip re-printing its kitchen
+// ticket and to auto-mark it paid once the sale actually completes.
+let pendingOnlineOrderPayment = null;
 async function pollOnlineOrders(){
   if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
   try{
@@ -4914,18 +4939,23 @@ function showOnlineOrders(){
 
   const unpaidRows = onlineOrdersUnpaid.length ? onlineOrdersUnpaid.map(o=>{
     const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--div)">
-      <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer" onclick="markOnlineOrderPaid(${o.id})">
-        <input type="checkbox" style="width:18px;height:18px;cursor:pointer">
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--div)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel} · ${o.client_phone||'—'}</span>
-      </label>
-      <span style="font-size:12px;font-weight:700;color:var(--red)">${f(o.total)} DT</span>
+        <span style="font-size:12px;font-weight:700;color:var(--red)">${f(o.total)} DT</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="encaisserOnlineOrder(${o.id})" style="flex:1;padding:7px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🧾 Encaisser</button>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:var(--muted)" onclick="markOnlineOrderPaid(${o.id})" title="Marquer payée sans repasser par l'encaissement (cas particulier)">
+          <input type="checkbox" style="width:15px;height:15px;cursor:pointer"> déjà réglée
+        </label>
+      </div>
     </div>`;
   }).join('') : '';
 
   const unpaidSection = onlineOrdersUnpaid.length ? `
     <div style="margin-top:14px;padding-top:10px;border-top:2px solid var(--div)">
-      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🧾 Non payées (${onlineOrdersUnpaid.length}) — cochez une fois réglée</div>
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🧾 Non payées (${onlineOrdersUnpaid.length}) — en cuisine, en attente de règlement</div>
       ${unpaidRows}
     </div>` : '';
 
@@ -4942,13 +4972,28 @@ async function postOnlineOrderAction(id, action){
     return !!(data && data.ok);
   }catch(e){ return false; }
 }
-async function markOnlineOrderPaid(id){
+async function markOnlineOrderPaid(id, silent){
   const ok = await postOnlineOrderAction(id,'markPaid');
-  if(!ok){ flash('⚠ Impossible de marquer payée — réessayez'); return; }
+  if(!ok){ if(!silent) flash('⚠ Impossible de marquer payée — réessayez'); return; }
   onlineOrdersUnpaid = onlineOrdersUnpaid.filter(o=>String(o.id)!==String(id));
   updateOnlineOrdersBadge();
-  flash('✓ Commande marquée payée');
-  showOnlineOrders();
+  if(!silent){ flash('✓ Commande marquée payée'); showOnlineOrders(); }
+}
+// Builds a kitchen-only ticket from an online order's raw items — reuses the
+// same zone-split printer routing as a normal sale (autoPrintKitchen), just
+// fed a synthetic order object since no sale/stock movement exists yet.
+// num is prefixed 'WEB' (not a plain digit sequence) so kitchen staff can
+// tell at a glance this didn't come from the till's own order counter.
+function printOnlineOrderKitchenTicket(order){
+  const od = {
+    type: order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'),
+    num: 'WEB'+String(order.id).padStart(3,'0'),
+    cliName: order.client_name||'', cliTel: order.client_phone||'',
+    items: (order.items_json||[]).map(it=>({name: it.name, qty: Math.max(1,parseInt(it.qty)||1), variant: it.variant||'', note:'', cat:''})),
+    time: new Date().toLocaleTimeString('fr-TN'),
+    cashier: USERS[currentUser]?.name||''
+  };
+  try{ autoPrintKitchen(od); }catch(e){}
 }
 async function acceptOnlineOrder(id){
   // o.id comes back as a STRING from the server (online_orders.id is BIGSERIAL —
@@ -4956,9 +5001,21 @@ async function acceptOnlineOrder(id){
   // here is a numeric literal from the onclick handler — compare as strings.
   const order = onlineOrdersPending.find(o=>String(o.id)===String(id));
   if(!order) return;
-  if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')) return;
   const ok = await postOnlineOrderAction(id,'accept');
   if(!ok){ flash("⚠ Impossible d'accepter — réessayez"); return; }
+  printOnlineOrderKitchenTicket(order);
+  onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
+  // Carry the full order (items included) straight into the unpaid list
+  // locally — don't wait for the next poll, so "🧾 Encaisser" works right away.
+  onlineOrdersUnpaid = [...onlineOrdersUnpaid, order];
+  updateOnlineOrdersBadge();
+  flash('✓ Envoyée en cuisine — '+order.client_name);
+  showOnlineOrders();
+}
+async function encaisserOnlineOrder(id){
+  const order = onlineOrdersUnpaid.find(o=>String(o.id)===String(id));
+  if(!order) return;
+  if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')) return;
   items = (order.items_json||[]).map(it=>({
     key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
     variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat:''
@@ -4968,11 +5025,10 @@ async function acceptOnlineOrder(id){
   cliName = order.client_name||''; cliTel = order.client_phone||'';
   const cn=document.getElementById('cli-name'), ct=document.getElementById('cli-tel');
   if(cn) cn.value=cliName; if(ct) ct.value=cliTel;
+  pendingOnlineOrderPayment = { id: order.id };
   renderOrd(); saveState();
   destroySessionModal();
-  flash('✓ Commande de '+cliName+' chargée — encaissez normalement');
-  onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
-  updateOnlineOrdersBadge();
+  flash('✓ Commande de '+cliName+' chargée — encaissez pour finaliser');
 }
 async function rejectOnlineOrder(id){
   if(!confirm('Refuser cette commande ?')) return;
