@@ -9,6 +9,7 @@ const {
   getDatabaseStatus,
   getSales,
   saveSale,
+  voidSale,
   saveSession,
   closeSession,
   getSessions,
@@ -385,6 +386,15 @@ ipcMain.handle('db-save-sale', async (_event, sale) => {
   }
 });
 
+ipcMain.handle('db-void-sale', async (_event, id, reason, voidedBy) => {
+  try {
+    return await voidSale(userDataPath(), id, reason, voidedBy);
+  } catch (error) {
+    console.error('db-void-sale failed:', error);
+    return { ok: false, error: error.message || 'Erreur SQLite' };
+  }
+});
+
 ipcMain.handle('db-get-status', async () => {
   try {
     await getDatabaseReady(userDataPath());
@@ -407,12 +417,18 @@ ipcMain.handle('db-get-status', async () => {
 // receipt on the computer. Resolving a real device and refusing to print when
 // there is none removes that behaviour completely.
 const VIRTUAL_PRINTER_RE = /PDF|XPS|OneNote|Fax|Print to|Adobe|Snagit|Document Writer|Foxit/i;
-async function resolveReceiptPrinter(wc) {
+// zonePrinter: an explicit device name for THIS ticket (e.g. the BAR printer),
+// resolved by the caller from hardware.json's zone1/2/3Printer. Takes priority
+// over the generic receiptPrinter override, but only if that exact device is
+// still plugged in — a removed printer must fall through to auto-detect
+// rather than silently going nowhere.
+async function resolveReceiptPrinter(wc, zonePrinter) {
   const cfg = hwConfig();
   let list = [];
   try { list = await wc.getPrintersAsync(); } catch (e) { return null; }
   const label = p => (p.name || '') + ' ' + (p.displayName || '') + ' ' + (p.description || '');
   const names = list.map(p => p.name);
+  if (zonePrinter && names.includes(zonePrinter)) return zonePrinter;
   // An explicit choice always wins, as long as it still exists.
   if (cfg.receiptPrinter && names.includes(cfg.receiptPrinter)) return cfg.receiptPrinter;
   if (cfg.drawerPrinter && names.includes(cfg.drawerPrinter)) return cfg.drawerPrinter;
@@ -424,11 +440,21 @@ async function resolveReceiptPrinter(wc) {
   return def ? def.name : null;
 }
 
-ipcMain.on('print-receipt', (event, htmlContent) => {
-  // Inject @page 80mm CSS to fix thermal printer paper width
+// zone: 'client' | 'zone1' | 'zone2' | 'zone3' | undefined. Maps to
+// hardware.json's zone1Printer/zone2Printer/zone3Printer so each ticket can be
+// pinned to its own physical printer — the client ticket and 'client'/undefined
+// keep using the generic receiptPrinter/auto-detect path.
+const ZONE_PRINTER_KEYS = { zone1: 'zone1Printer', zone2: 'zone2Printer', zone3: 'zone3Printer' };
+
+ipcMain.on('print-receipt', (event, htmlContent, zone) => {
+  // Inject @page 80mm CSS to fix thermal printer paper width.
+  // margin MUST be "0 auto", not "0" — the content box is 72mm on an 80mm
+  // page, so a plain 0 margin left the 8mm slack stuck on one side instead
+  // of split evenly, pushing every ticket flush against one edge instead of
+  // centered on the roll (confirmed against a real printed receipt).
   const printCSS = `<style>
     @page { size: 80mm auto; margin: 0mm; }
-    html, body { width: 72mm; max-width: 72mm; margin: 0; padding: 2mm; }
+    html, body { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 2mm; }
   </style>`;
   const fixedHtml = htmlContent.replace('</head>', printCSS + '</head>');
 
@@ -465,7 +491,9 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
   printWin.webContents.once('did-finish-load', () => {
     setTimeout(async () => {
       const t0 = Date.now();
-      const deviceName = await resolveReceiptPrinter(printWin.webContents);
+      const zoneKey = ZONE_PRINTER_KEYS[zone];
+      const zonePrinter = zoneKey ? hwConfig()[zoneKey] : '';
+      const deviceName = await resolveReceiptPrinter(printWin.webContents, zonePrinter);
       if (!deviceName) {
         console.log('[Print] no physical printer — ticket not printed (refusing PDF/XPS fallback)');
         cleanup();
@@ -500,6 +528,12 @@ ipcMain.on('print-receipt', (event, htmlContent) => {
 const HW_DEFAULTS = {
   drawerPrinter: '',    // '' = auto-detect, and NEVER a blind "first printer"
   receiptPrinter: '',   // '' = auto-detect; virtual PDF/XPS devices are never used
+  // Multiple physical kitchen printers (BAR / CUISINE / CHICHA). '' = falls
+  // back to receiptPrinter/auto-detect, so a site with only one printer needs
+  // no configuration at all — this only matters once a second device exists.
+  zone1Printer: '',
+  zone2Printer: '',
+  zone3Printer: '',
 };
 let _hwCfg = null;
 function hwConfig() {
@@ -510,6 +544,29 @@ function hwConfig() {
   } catch (e) {}
   return _hwCfg;
 }
+function saveHwConfig(partial) {
+  const cfg = { ...hwConfig(), ...partial };
+  fs.writeFileSync(path.join(userDataPath(), 'hardware.json'), JSON.stringify(cfg, null, 2), 'utf8');
+  _hwCfg = cfg;
+  return cfg;
+}
+
+ipcMain.handle('hw-get-config', async () => hwConfig());
+
+ipcMain.handle('hw-save-config', async (_event, partial) => {
+  try { return { ok: true, config: saveHwConfig(partial || {}) }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+
+// Real Windows printer names, for the zone-assignment settings screen — the
+// owner picks from this list rather than typing an exact device name by hand.
+ipcMain.handle('list-printers', async () => {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return [];
+    const list = await mainWindow.webContents.getPrintersAsync();
+    return list.map(p => ({ name: p.name, displayName: p.displayName || p.name, isDefault: !!p.isDefault }));
+  } catch (e) { return []; }
+});
 
 // ── CASH DRAWER (XP-80T via RJ11 cable) ───────────────────────────────
 // Uses Windows WritePrinter API — no printer sharing needed.
@@ -973,10 +1030,12 @@ function poleWritePsArgs(port, baudRate, bytes) {
   const p = String(port).replace(/'/g, "''");
   return [
     '-NoProfile', '-NonInteractive', '-Command',
-    `try {
+    `$sp = $null;
+try {
   $names = [System.IO.Ports.SerialPort]::GetPortNames();
   if ($names -notcontains '${p}') { Write-Host 'ERR:PORT_ABSENT'; exit };
   $sp = New-Object System.IO.Ports.SerialPort '${p}', ${baudRate}, ([System.IO.Ports.Parity]::None), 8, ([System.IO.Ports.StopBits]::One);
+  $sp.Handshake = [System.IO.Ports.Handshake]::None;
   $sp.DtrEnable = $true;
   $sp.RtsEnable = $true;
   $sp.WriteTimeout = 2000;
@@ -987,10 +1046,15 @@ function poleWritePsArgs(port, baudRate, bytes) {
   $sw = [System.Diagnostics.Stopwatch]::StartNew();
   while ($sp.BytesToWrite -gt 0 -and $sw.ElapsedMilliseconds -lt 1500) { Start-Sleep -Milliseconds 5 };
   Start-Sleep -Milliseconds 60;
-  $sp.Close();
   Write-Host ('SENT:' + $b.Length);
 } catch {
   Write-Host ('ERR:' + $_.Exception.Message);
+} finally {
+  # Runs even if Write/Flush threw (e.g. WriteTimeout with nothing attached) —
+  # without this, a failed write left the port held open until .NET's GC
+  # eventually finalized it, so the NEXT write failed with "Access denied"
+  # even though this script's own process had already exited.
+  if ($sp -and $sp.IsOpen) { $sp.Close(); }
 }`
   ];
 }

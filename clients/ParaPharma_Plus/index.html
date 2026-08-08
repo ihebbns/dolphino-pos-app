@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">POS Pro — by Servio ⚡</title>
+<!-- Fonts intentionally NOT loaded from the network: a render-blocking
+     stylesheet delays first paint, and the window stays hidden until
+     'ready-to-show'. On a till with no internet that meant a long blank
+     start-up. System fonts below, so the UI paints immediately. -->
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0B1120;--panel:#111827;--card:#1E293B;--card-h:#273548;
+  --gold:#F59E0B;--gold-l:#FBBF24;--gold-dim:rgba(245,158,11,.08);
+  --txt:#F1F5F9;--muted:#64748B;--div:#1E293B;
+  --green:#10B981;--red:#EF4444;--blue:#3B82F6;--orange:#F97316;
+  --r:12px;--workspace:#151D2E;--surface:#1E293B;
+}
+body.light{
+  --bg:#F1F5F9;--panel:#FFFFFF;--card:#F8FAFC;--card-h:#EFF6FF;
+  --gold:#D97706;--gold-l:#B45309;--gold-dim:rgba(217,119,6,.08);
+  --txt:#0F172A;--muted:#64748B;--div:#E2E8F0;
+  --green:#059669;--red:#DC2626;--blue:#2563EB;--orange:#EA580C;
+  --workspace:#F1F5F9;--surface:#FFFFFF;
+}
+body{font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;-webkit-font-smoothing:antialiased;}
+input,textarea,select{font-family:inherit;-webkit-user-select:text;user-select:text;}
+button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db{-webkit-tap-highlight-color:transparent;}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeInUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
+@keyframes popIn{0%{opacity:0;transform:scale(.85);}60%{opacity:1;transform:scale(1.04);}100%{transform:scale(1);}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.35);}50%{box-shadow:0 0 0 6px rgba(245,158,11,0);}}
+@keyframes shimmer{0%{background-position:-200px 0;}100%{background-position:200px 0;}}
+@keyframes ripple{to{transform:scale(2.6);opacity:0;}}
+.ripple-el{position:absolute;border-radius:50%;background:rgba(255,255,255,.35);transform:scale(0);animation:ripple .55s ease-out;pointer-events:none;}
+
+/* ── LOGIN ── */
+#login-screen{position:fixed;inset:0;background:radial-gradient(circle at 30% 20%,rgba(245,158,11,.08),transparent 55%),radial-gradient(circle at 80% 85%,rgba(59,130,246,.05),transparent 50%),var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;}
+.login-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:38px 32px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4),0 0 0 1px rgba(245,158,11,.04);animation:scaleIn .4s cubic-bezier(.2,.9,.3,1.1);}
+.login-logo{font-size:48px;margin-bottom:6px;filter:drop-shadow(0 4px 14px rgba(245,158,11,.3));animation:fadeInUp .5s ease both;}
+.login-brand{font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;font-size:26px;font-weight:800;color:var(--txt);letter-spacing:-0.5px;animation:fadeInUp .5s .05s ease both;}
+.login-sub{font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:30px;animation:fadeInUp .5s .1s ease both;font-weight:500;}
+.user-cards{display:flex;flex-direction:column;gap:10px;}
+.user-card{background:var(--card);border:2px solid var(--div);border-radius:14px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:transform .15s ease,border-color .15s,background .15s,box-shadow .15s;text-align:left;animation:fadeInUp .5s .15s ease both;position:relative;overflow:hidden;}
+.user-card:hover{border-color:var(--gold);background:var(--card-h);transform:translateY(-2px);box-shadow:0 8px 20px rgba(245,158,11,.1);}
+.user-card:active{transform:translateY(0) scale(.98);}
+.user-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);}
+.user-name{font-size:15px;font-weight:600;}
+.user-role{font-size:11px;color:var(--muted);margin-top:2px;}
+.pin-wrap{margin-top:16px;display:none;}
+.pin-title{font-size:13px;color:var(--muted);margin-bottom:10px;}
+.pin-dots{display:flex;gap:10px;justify-content:center;margin-bottom:14px;}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--div);transition:all .15s;}
+.pin-dot.filled{background:var(--gold);border-color:var(--gold);}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.pin-btn{padding:14px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:var(--txt);font-size:18px;font-weight:600;cursor:pointer;transition:all .1s;text-align:center;position:relative;overflow:hidden;}
+.pin-btn:hover{background:var(--card-h);border-color:var(--gold-dim);}
+.pin-btn:active{transform:scale(.95);}
+.pin-error{color:var(--red);font-size:12px;margin-top:8px;display:none;}
+.back-login{color:var(--muted);font-size:12px;cursor:pointer;margin-top:14px;display:inline-block;}
+.back-login:hover{color:var(--txt);}
+
+/* ── HEADER ── */
+#hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--div);padding:0 18px;height:56px;flex-shrink:0;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-d{width:36px;height:36px;border:2px solid var(--gold);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;font-size:16px;font-weight:800;color:var(--gold);}
+.logo-name{font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;font-size:17px;font-weight:800;color:var(--txt);letter-spacing:-.3px;}
+.logo-tag{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:500;}
+#clock{font-size:18px;font-weight:700;color:var(--txt);}
+#datel{font-size:10px;color:var(--muted);text-align:center;}
+.hdr-right{display:flex;align-items:center;gap:8px;}
+.session-badge{background:var(--card);border:1px solid var(--div);border-radius:20px;padding:5px 12px 5px 7px;display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;transition:border-color .12s;}
+.session-badge:hover{border-color:var(--gold);}
+.s-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.hdr-btn{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:7px 13px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s ease;position:relative;overflow:hidden;}
+.hdr-btn:hover{border-color:var(--gold);color:var(--gold-l);background:var(--gold-dim);}
+.hdr-btn:active{transform:scale(.96);}
+.hdr-icon{padding:7px 10px;}
+.hdr-menu-wrap{position:relative;}
+.hdr-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:236px;background:var(--panel);border:1px solid var(--div);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.5);padding:6px;z-index:300;display:none;flex-direction:column;gap:2px;}
+.hdr-menu.open{display:flex;animation:hdrMenuIn .12s ease both;}
+@keyframes hdrMenuIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.hdr-menu-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:var(--txt);font-size:13px;font-weight:600;padding:11px 14px;border-radius:8px;cursor:pointer;transition:background .1s;}
+.hdr-menu-item:hover{background:var(--card);color:var(--gold-l);}
+.hdr-menu-item.danger{color:var(--red);}
+.hdr-menu-item.danger:hover{background:rgba(224,82,82,.1);color:var(--red);}
+.hdr-menu-sep{height:1px;background:var(--div);margin:4px 6px;}
+
+/* ── MAIN ── */
+#main{display:flex;flex:1;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+#sidebar{width:170px;background:var(--panel);border-right:1px solid var(--div);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;}
+#sidebar::-webkit-scrollbar{width:3px;}
+.sb-label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);padding:14px 14px 8px;font-weight:600;}
+.cat-btn{display:flex;align-items:center;gap:10px;padding:10px 14px;margin:2px 8px;border-radius:var(--r);cursor:pointer;border-left:3px solid transparent;transition:all .12s ease;color:var(--muted);font-size:12px;font-weight:500;}
+.cat-btn:hover{background:var(--card);color:var(--txt);}
+.cat-btn.on{border-left-color:var(--gold);background:var(--gold-dim);color:var(--gold-l);font-weight:700;}
+.cat-icon{font-size:18px;width:34px;height:34px;flex-shrink:0;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--card);transition:all .12s;}
+.cat-btn.on .cat-icon{background:var(--gold);box-shadow:0 3px 10px rgba(245,158,11,.25);}
+
+/* ── GRID ── */
+#prod-area{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--workspace);}
+#sbar{padding:12px 16px;border-bottom:1px solid var(--div);background:var(--panel);display:flex;gap:8px;align-items:center;}
+#barcode-inp{width:200px;background:var(--card);border:2px solid var(--gold);border-radius:6px;padding:7px 12px 7px 30px;color:var(--txt);font-size:12px;outline:none;font-weight:600;position:relative;}
+#barcode-inp::placeholder{color:var(--muted);font-weight:400;}
+#barcode-inp:focus{border-color:var(--gold-l);box-shadow:0 0 0 3px rgba(74,144,217,.15);}
+.barcode-wrap{position:relative;display:flex;align-items:center;}
+.barcode-wrap::before{content:'⎸⎹⎸';position:absolute;left:8px;font-size:11px;color:var(--gold);pointer-events:none;letter-spacing:-1px;}
+#srch{flex:1;background:var(--card);border:1px solid var(--div);border-radius:8px;padding:9px 14px;color:var(--txt);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s;}
+#srch:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-dim);}
+#srch::placeholder{color:var(--muted);}
+.cat-title{padding:12px 16px 6px;font-family:-apple-system,'Segoe UI Variable Text','Segoe UI',system-ui,Roboto,sans-serif;font-size:15px;font-weight:700;color:var(--txt);flex-shrink:0;letter-spacing:-.2px;}
+/* align-content:start stops rows stretching to fill leftover vertical space
+   when a category has few products — that was making cards tall and mostly
+   empty (same bug found and fixed in the café/restaurant builds). */
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-auto-rows:min-content;align-content:start;gap:12px;padding:12px 16px 16px;overflow-y:auto;flex:1;}
+#grid::-webkit-scrollbar{width:5px;}
+#grid::-webkit-scrollbar-thumb{background:var(--div);border-radius:4px;}
+
+.pc{background:var(--surface);border:1px solid var(--div);border-radius:var(--r);padding:16px 12px 12px;cursor:pointer;transition:transform .15s ease,box-shadow .15s,border-color .15s;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;overflow:hidden;animation:fadeInUp .25s ease both;text-align:center;min-height:140px;}
+.pc::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--gold-dim),transparent 60%);opacity:0;transition:opacity .15s;}
+.pc:hover{border-color:var(--gold);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.08);}
+.pc:hover::before{opacity:1;}
+.pc:active{transform:translateY(0) scale(.97);}
+.pc-em{font-size:42px;margin-bottom:4px;transition:transform .15s ease;}
+.pc:hover .pc-em{transform:scale(1.1);}
+.pc-img{width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:4px;transition:transform .15s ease;box-shadow:0 2px 8px rgba(0,0,0,.1);}
+.pc:hover .pc-img{transform:scale(1.06);}
+.pc-nm{font-size:12px;font-weight:600;line-height:1.3;color:var(--txt);max-height:2.6em;overflow:hidden;}
+.pc-pr{font-size:15px;font-weight:800;color:var(--gold);margin-top:auto;padding-top:4px;}
+.pc-pr span{font-size:10px;color:var(--muted);font-weight:500;}
+.pc-stock{font-size:9px;color:var(--green);margin-top:2px;}
+.pc-stock.low{color:var(--orange);}
+.pc-stock.out{color:var(--red);font-weight:700;}
+.pc-rupture{position:absolute;top:6px;right:6px;background:var(--red);color:#fff;font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.5px;}
+.pc-add{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:var(--gold);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;opacity:.85;transition:opacity .12s,transform .12s;box-shadow:0 2px 8px rgba(245,158,11,.3);}
+.pc:hover .pc-add{opacity:1;transform:scale(1.08);}
+
+/* ── ORDER PANEL ── */
+#op{width:360px;background:var(--panel);border-left:1px solid var(--div);display:flex;flex-direction:column;flex-shrink:0;}
+.op-hdr{padding:10px 12px;border-bottom:1px solid var(--div);display:flex;align-items:center;justify-content:space-between;}
+.op-t{font-weight:700;font-size:14px;}
+.op-n{font-size:22px;color:var(--gold);font-weight:700;letter-spacing:1px;}
+.op-mode{font-size:10px;color:var(--gold-l);background:var(--gold-dim);padding:2px 8px;border-radius:10px;margin-left:8px;}
+.btn-cl{font-size:10px;color:var(--red);cursor:pointer;padding:3px 8px;border:1px solid rgba(224,82,82,.25);border-radius:4px;}
+.btn-cl:hover{background:rgba(224,82,82,.08);}
+
+#oi{flex:1;overflow-y:auto;}
+#oi::-webkit-scrollbar{width:3px;}
+#oi::-webkit-scrollbar-thumb{background:var(--div);}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted);padding:30px;text-align:center;}
+.empty .ei{font-size:40px;opacity:.2;}
+.oi{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;border-bottom:1px solid rgba(26,32,48,.7);}
+.oi:hover{background:var(--card);}
+.qc{display:flex;align-items:center;background:var(--card);border:1px solid var(--div);border-radius:5px;overflow:hidden;flex-shrink:0;}
+.qb{width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--muted);background:none;border:none;}
+.qb:hover{background:var(--div);color:var(--txt);}
+.qv{width:24px;text-align:center;font-size:12px;font-weight:700;}
+.ii{flex:1;min-width:0;}
+.in{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.isub{font-size:10px;color:var(--muted);}
+.ip{font-size:12px;font-weight:700;color:var(--gold-l);flex-shrink:0;}
+.id{color:var(--muted);cursor:pointer;font-size:13px;padding:3px;border-radius:3px;flex-shrink:0;}
+.id:hover{color:var(--red);background:rgba(224,82,82,.08);}
+
+/* totals */
+#tots{border-top:1px solid var(--div);padding:10px 12px;}
+.tr{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px;}
+.disc-row{display:flex;gap:5px;margin:6px 0;}
+.db{flex:1;padding:5px 0;font-size:10px;background:var(--card);border:1px solid var(--div);color:var(--muted);border-radius:4px;cursor:pointer;text-align:center;}
+.db.on{border-color:var(--gold);color:var(--gold);}
+.tg{font-size:18px;font-weight:700;display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--div);margin-top:4px;}
+.tg span:last-child{color:var(--gold-l);}
+
+/* payment */
+#pay{border-top:1px solid var(--div);padding:10px 12px;}
+.pl{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:7px;}
+.pm{display:flex;gap:6px;margin-bottom:9px;}
+.pb{flex:1;padding:8px 4px;background:var(--card);border:2px solid var(--div);color:var(--muted);border-radius:6px;cursor:pointer;font-size:10px;font-weight:600;text-align:center;transition:all .13s;}
+.pb .pi{font-size:17px;display:block;margin-bottom:2px;}
+.pb:hover{border-color:var(--gold-dim);}
+.pb.on{border-color:var(--gold);color:var(--gold-l);background:var(--gold-dim);}
+.ci-row{display:flex;gap:7px;align-items:center;margin-bottom:6px;}
+.ci-lbl{font-size:11px;color:var(--muted);white-space:nowrap;}
+.ci{flex:1;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:7px 10px;color:var(--txt);font-size:14px;font-weight:700;outline:none;text-align:right;}
+.ci:focus{border-color:var(--gold);}
+.qa{display:flex;gap:5px;margin-bottom:7px;}
+.qa button{flex:1;padding:5px 0;font-size:11px;background:var(--card);border:1px solid var(--div);color:var(--muted);border-radius:4px;cursor:pointer;}
+.qa button:hover{border-color:var(--gold-dim);color:var(--txt);}
+.mr{display:flex;justify-content:space-between;font-size:11px;margin-bottom:7px;}
+.mv{font-weight:700;color:var(--green);font-size:14px;}
+.enc{width:100%;padding:16px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:var(--r);color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:transform .12s ease,box-shadow .12s,opacity .12s;letter-spacing:.3px;position:relative;overflow:hidden;}
+.enc:not(:disabled){animation:glowPulse 2.4s ease-in-out infinite;}
+.enc:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(245,158,11,.35);}
+.enc:active:not(:disabled){transform:translateY(0) scale(.98);}
+.enc:disabled{opacity:.35;cursor:not-allowed;animation:none;}
+
+/* ── MODALS ── */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:center;justify-content:center;animation:fadeIn .15s ease;pointer-events:none;}
+.ov[style*="display: flex"],.ov[style*="display:flex"]{pointer-events:all;backdrop-filter:blur(6px);}
+.mb{background:var(--panel);border:1px solid var(--div);border-radius:16px;padding:24px;width:90vw;max-width:380px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.4);animation:scaleIn .2s cubic-bezier(.2,.85,.3,1.05);}
+.mb::-webkit-scrollbar{width:3px;}
+.mt{font-size:16px;font-weight:700;margin-bottom:14px;text-align:center;letter-spacing:.2px;}
+.mcancel{width:100%;padding:10px;background:var(--card);border:1px solid var(--div);border-radius:7px;color:var(--muted);cursor:pointer;margin-top:12px;font-size:13px;}
+.mcancel:hover{border-color:var(--red);color:var(--red);}
+.btn-ok{width:100%;padding:11px;background:var(--gold);border:none;border-radius:7px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;}
+
+/* receipt */
+.rct{font-family:'Courier New',monospace;font-size:11px;color:var(--txt);background:var(--card);border:1px solid var(--div);border-radius:8px;padding:16px 14px;line-height:1.8;}
+.rc{text-align:center;}
+.rl{font-weight:700;font-size:16px;letter-spacing:2px;}
+.rsub{font-size:9px;letter-spacing:2px;color:var(--muted);}
+.rdiv{border-top:1px dashed var(--div);margin:7px 0;}
+.rr{display:flex;justify-content:space-between;}
+.rtot{font-weight:700;font-size:13px;}
+.btn-print{width:100%;margin-top:12px;padding:11px;background:var(--green);border:none;border-radius:7px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;}
+.btn-print:hover{opacity:.9;}
+.btn-new{width:100%;margin-top:7px;padding:11px;background:var(--gold);border:none;border-radius:7px;color:#060810;font-size:13px;font-weight:700;cursor:pointer;}
+
+/* dashboard */
+#dash-modal .mb{max-width:700px;width:95vw;}
+.dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
+.kpi{background:var(--card);border:1px solid var(--div);border-radius:9px;padding:16px 14px;}
+.kpi-val{font-size:24px;font-weight:700;color:var(--gold-l);}
+.kpi-lbl{font-size:11px;color:var(--muted);margin-top:3px;}
+.dash-table{width:100%;border-collapse:collapse;font-size:12px;}
+.dash-table th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--div);}
+.dash-table td{padding:7px 8px;border-bottom:1px solid rgba(26,32,48,.5);}
+.dash-table tr:hover td{background:var(--card);}
+.stock-alert-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px;}
+.stock-alert-item{background:var(--card);border:2px solid rgba(224,82,82,.4);border-radius:9px;padding:10px;text-align:center;}
+.stock-alert-item .sa-name{font-size:11px;color:var(--muted);margin-bottom:4px;}
+.stock-alert-item .sa-qty{font-size:20px;font-weight:700;color:var(--red);}
+
+/* product management (manager) */
+#menu-manage-modal .mb{max-width:680px;width:95vw;}
+.mm-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.mm-select{flex:1;min-width:150px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;}
+.mm-select:focus{border-color:var(--gold);}
+.mm-addcat{display:none;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.mm-input{background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;}
+.mm-input:focus{border-color:var(--gold);}
+.mm-items-list{max-height:280px;overflow-y:auto;margin-bottom:16px;}
+.mm-items-list::-webkit-scrollbar{width:3px;}
+.mm-row{display:flex;align-items:center;gap:6px;padding:8px 6px;border-bottom:1px solid rgba(26,32,48,.5);flex-wrap:wrap;}
+.mm-row:hover{background:var(--card);}
+.mm-em{font-size:18px;width:26px;text-align:center;flex-shrink:0;}
+.mm-name{flex:1;font-size:12px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-price-input{width:60px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px 6px;color:var(--gold-l);font-size:12px;font-weight:700;text-align:right;outline:none;flex-shrink:0;}
+.mm-price-input:focus{border-color:var(--gold);}
+.mm-del{color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:4px;flex-shrink:0;}
+.mm-del:hover{color:var(--red);background:rgba(224,82,82,.08);}
+.mm-addbox{border-top:1px solid var(--div);padding-top:14px;}
+.mm-addbox-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px;}
+.mm-row-inputs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.mm-emoji-input{width:54px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:14px;text-align:center;outline:none;}
+.mm-emoji-input:focus{border-color:var(--gold);}
+.mm-name-input{flex:1;min-width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;}
+.mm-name-input:focus{border-color:var(--gold);}
+.mm-price-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+.mm-price-field{flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;outline:none;min-width:80px;}
+.mm-price-field:focus{border-color:var(--gold);}
+
+/* ── REMOTE LOCK ── */
+#remote-lock{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(224,82,82,.12),transparent 60%),var(--bg);z-index:999;display:none;align-items:center;justify-content:center;pointer-events:none;}
+#remote-lock.active{display:flex;pointer-events:all;}
+.remote-lock-box{background:var(--panel);border:1px solid rgba(224,82,82,.4);border-radius:20px;padding:40px 32px;width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.remote-lock-icon{font-size:56px;margin-bottom:12px;}
+.remote-lock-title{font-family:Georgia,'Times New Roman',serif;font-size:22px;color:var(--red);margin-bottom:14px;}
+.remote-lock-msg{font-size:14px;color:var(--muted);line-height:1.8;white-space:pre-line;}
+
+/* ── SESSION CAISSE ── */
+.session-modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .18s ease;}
+.session-box{background:var(--panel);border:1px solid var(--div);border-radius:20px;padding:32px;width:360px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+.session-icon{font-size:44px;margin-bottom:8px;}
+.session-title{font-family:Georgia,'Times New Roman',serif;font-size:20px;color:var(--gold-l);margin-bottom:6px;}
+.session-sub{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.6;}
+.session-input-row{display:flex;flex-direction:column;gap:6px;text-align:left;margin-bottom:16px;}
+.session-input-row label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.session-inp{background:var(--card);border:1px solid var(--div);border-radius:8px;padding:12px 14px;color:var(--txt);font-size:20px;font-weight:700;outline:none;width:100%;text-align:center;}
+.session-inp:focus{border-color:var(--gold);}
+.session-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--div);font-size:13px;}
+.session-row:last-child{border-bottom:none;}
+.session-row span:last-child{font-weight:700;color:var(--gold-l);}
+.session-ecart-ok{color:var(--green) !important;}
+.session-ecart-warn{color:var(--red) !important;}
+.btn-session-open{width:100%;padding:14px;background:linear-gradient(135deg,var(--green),#2ea868);border:none;border-radius:9px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+.btn-session-open:hover{opacity:.9;}
+.btn-session-close{width:100%;padding:14px;background:linear-gradient(135deg,var(--red),#c44);border:none;border-radius:9px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;}
+.session-badge-hdr{background:rgba(61,184,122,.15);border:1px solid rgba(61,184,122,.3);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--green);font-weight:600;}
+
+/* status */
+#sb{background:var(--panel);border-top:1px solid var(--div);padding:4px 16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);flex-shrink:0;}
+#dt{display:none;}
+
+/* reception modal */
+.recep-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--div);}
+.recep-row:last-child{border-bottom:none;}
+.recep-name{flex:1;font-size:12px;}
+.recep-qty{font-size:11px;color:var(--muted);width:40px;text-align:center;}
+.recep-inp{width:60px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px;color:var(--txt);font-size:12px;text-align:center;outline:none;}
+.recep-inp:focus{border-color:var(--gold);}
+
+/* print */
+@media print{
+  body>*:not(#print-area){display:none!important;}
+  #print-area{display:block!important;font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff;}
+}
+#print-area{display:none;}
+</style>
+</head>
+<body>
+
+<!-- ══ REMOTE LOCK ══ -->
+<div id="remote-lock">
+  <div class="remote-lock-box">
+    <div class="remote-lock-icon">🔒</div>
+    <div class="remote-lock-title">Application Suspendue</div>
+    <div class="remote-lock-msg" id="remote-lock-msg">Veuillez contacter le développeur.</div>
+  </div>
+</div>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo" id="login-logo">🏪</div>
+    <div class="login-brand" id="login-brand">PARAPHARMACIE</div>
+    <div class="login-sub" id="login-sub">Point de Vente — POS Pro</div>
+
+    <div class="user-cards" id="user-list">
+      <div class="user-card" onclick="selectUser('manager')">
+        <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--gold-l)" id="login-manager-avatar">M</div>
+        <div><div class="user-name" id="login-manager-name">Manager</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
+      </div>
+      <div class="user-card" onclick="selectUser('caissier')">
+        <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--blue)" id="login-cashier-avatar">C</div>
+        <div><div class="user-name" id="login-cashier-name">Caissier</div><div class="user-role">Vente · Impression ticket</div></div>
+      </div>
+    </div>
+
+    <div class="pin-wrap" id="pin-wrap">
+      <div class="pin-title" id="pin-title">Code PIN</div>
+      <div class="pin-dots" id="pin-dots">
+        <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+        <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+      </div>
+      <div class="pin-grid">
+        <div class="pin-btn" onclick="pinKey('1')">1</div><div class="pin-btn" onclick="pinKey('2')">2</div><div class="pin-btn" onclick="pinKey('3')">3</div>
+        <div class="pin-btn" onclick="pinKey('4')">4</div><div class="pin-btn" onclick="pinKey('5')">5</div><div class="pin-btn" onclick="pinKey('6')">6</div>
+        <div class="pin-btn" onclick="pinKey('7')">7</div><div class="pin-btn" onclick="pinKey('8')">8</div><div class="pin-btn" onclick="pinKey('9')">9</div>
+        <div class="pin-btn" onclick="pinClear()" style="color:var(--red)">✕</div>
+        <div class="pin-btn" onclick="pinKey('0')">0</div>
+        <div class="pin-btn" onclick="pinDel()" style="color:var(--muted)">⌫</div>
+      </div>
+      <div class="pin-error" id="pin-error">Code incorrect. Réessayez.</div>
+      <div class="back-login" onclick="backToUsers()">← Changer d'utilisateur</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HEADER ══ -->
+<header id="hdr" style="display:none">
+  <div class="logo">
+    <div class="logo-d" id="hdr-logo-letter">P</div>
+    <div><div class="logo-name" id="hdr-logo-name">PARAPHARMACIE</div><div class="logo-tag">POS Pro — by Servio ⚡</div></div>
+  </div>
+  <div style="text-align:center"><div id="clock">--:--:--</div><div id="datel"></div></div>
+  <div class="hdr-right">
+    <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
+    <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
+    <button class="hdr-btn hdr-icon" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
+    <div class="hdr-menu-wrap">
+      <div class="session-badge" onclick="toggleHdrMenu(event)" title="Menu">
+        <div class="s-av" id="s-av"></div>
+        <span id="s-name"></span>
+        <span style="color:var(--muted);margin-left:4px;font-size:10px;">▾</span>
+      </div>
+      <div class="hdr-menu" id="hdr-menu">
+        <button class="hdr-menu-item" id="btn-dash" onclick="closeHdrMenu();showDash()" style="display:none">📊 Tableau de bord</button>
+        <button class="hdr-menu-item" id="btn-menu-manage" onclick="closeHdrMenu();showMenuManage()" style="display:none">🛠️ Gérer les produits</button>
+        <button class="hdr-menu-item" id="btn-ajout-fond" onclick="closeHdrMenu();showAjoutFond()" style="display:none">💰 Mouvements de caisse</button>
+        <button class="hdr-menu-item" id="btn-pins" onclick="closeHdrMenu();showUserManager()" style="display:none">👥 Utilisateurs</button>
+        <button class="hdr-menu-item" id="btn-printer" onclick="closeHdrMenu();showPrinterConfig()" style="display:none">🖨️ Imprimante</button>
+        <button class="hdr-menu-item danger" id="btn-cloturer" onclick="closeHdrMenu();cloturerJournee()" style="display:none">🔒 Clôturer la journée</button>
+        <div class="hdr-menu-sep"></div>
+        <button class="hdr-menu-item danger" onclick="closeHdrMenu();logout()">⏻ Déconnexion</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ MAIN ══ -->
+<div id="main" style="display:none">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sb-label">Catégories</div>
+    <div id="cat-list"></div>
+  </nav>
+
+  <!-- GRID -->
+  <div id="prod-area">
+    <div id="sbar">
+      <div class="barcode-wrap">
+        <input id="barcode-inp" type="text" placeholder="Scanner code-barres..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text" enterkeyhint="done">
+      </div>
+      <input id="srch" type="text" placeholder="🔍  Rechercher par nom..." oninput="filterProd()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search" enterkeyhint="search">
+    </div>
+    <div class="cat-title" id="cat-title"></div>
+    <div id="grid"></div>
+  </div>
+
+  <!-- ORDER PANEL -->
+  <div id="op">
+    <!-- Order header -->
+    <div class="op-hdr">
+      <div style="display:flex;align-items:center"><div><div class="op-t">Vente</div><div class="op-n" id="onum">#001</div></div><span class="op-mode">Caisse</span></div>
+      <div class="btn-cl" onclick="clearOrd()">✕ Vider</div>
+    </div>
+    <div id="oi"></div>
+    <!-- Totals -->
+    <div id="tots">
+      <div class="tr"><span>Sous-total</span><span id="sub">0.000 DT</span></div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">Remise</div>
+      <div class="disc-row">
+        <button class="db on" onclick="setDisc(0,this)">Aucune</button>
+        <button class="db" onclick="setDisc(5,this)">-5%</button>
+        <button class="db" onclick="setDisc(10,this)">-10%</button>
+        <button class="db" onclick="setDisc(15,this)">-15%</button>
+      </div>
+      <div class="tr" id="dr" style="color:var(--red);display:none"><span id="dl">Remise 0%</span><span id="dv">0.000</span></div>
+      <div class="tg"><span>TOTAL</span><span id="gt">0.000 DT</span></div>
+    </div>
+    <!-- Payment -->
+    <div id="pay">
+      <div class="pl">Paiement</div>
+      <div class="pm">
+        <button class="pb on" id="p-cash" onclick="selPay('cash',this)"><span class="pi">💵</span>Espèces</button>
+        <button class="pb" id="p-card" onclick="selPay('card',this)"><span class="pi">💳</span>Carte</button>
+      </div>
+      <div id="cs">
+        <div class="ci-row"><span class="ci-lbl">Reçu (DT)</span><input class="ci" type="number" id="cr" placeholder="0.000" step="0.001" oninput="calcM()" onfocus="this.select()" inputmode="decimal" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+        <div class="qa" id="qa"></div>
+        <div class="mr" id="mr" style="display:none"><span style="color:var(--muted)">Monnaie</span><span class="mv" id="mv">0.000 DT</span></div>
+      </div>
+      <button class="enc" id="enc" onclick="encaisser()" disabled>✓  Encaisser &amp; Imprimer</button>
+    </div>
+  </div>
+</div>
+
+<div id="sb" style="display:none"><span id="stm">✓ Prêt</span><span id="dt">Ventes du jour : 0.000 DT</span></div>
+
+<!-- ══ RECEIPT MODAL ══ -->
+<div class="ov" id="rm" style="display:none">
+  <div class="mb">
+    <div class="rct" id="rc"></div>
+    <button class="btn-print" onclick="doPrint()">🖨️  Imprimer ticket</button>
+    <button class="btn-new" onclick="newOrd()">＋ Nouvelle vente</button>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD MODAL ══ -->
+<div class="ov" id="dash-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="mb">
+    <div class="mt">📊 Tableau de bord — Ventes du jour</div>
+    <div class="dash-grid" id="dash-kpis"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;margin-top:14px;">📦 STOCK PRODUITS — À L'UNITÉ</div>
+    <div id="dash-stock-unit" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px;"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">HISTORIQUE DES VENTES</div>
+    <table class="dash-table">
+      <thead><tr><th>#</th><th>Heure</th><th>Articles</th><th>Total</th><th>Paiement</th><th>Caissier</th></tr></thead>
+      <tbody id="dash-rows"></tbody>
+    </table>
+    <button class="mcancel" onclick="document.getElementById('dash-modal').style.display='none'">Fermer</button>
+  </div>
+</div>
+
+<!-- ══ PRODUCT MANAGEMENT MODAL (Manager) ══ -->
+<div class="ov" id="menu-manage-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="mb">
+    <div class="mt">🛠️ Gérer les produits</div>
+
+    <div class="mm-toolbar">
+      <select class="mm-select" id="mm-cat-select" onchange="renderMenuManage()"></select>
+      <button class="hdr-btn" onclick="showAddCatForm()">+ Catégorie</button>
+      <button class="hdr-btn" onclick="showReception()">📦 Réception</button>
+      <button class="hdr-btn" id="mm-del-cat-btn" onclick="deleteMenuCategory()" style="color:var(--red);border-color:rgba(224,82,82,.25)">🗑️</button>
+    </div>
+
+    <div class="mm-addcat" id="mm-add-cat-form">
+      <input type="text" class="mm-input" id="mm-newcat-name" placeholder="Nom catégorie" style="flex:1;" autocomplete="off" autocorrect="off" spellcheck="false">
+      <input type="text" class="mm-input" id="mm-newcat-icon" placeholder="Emoji" style="width:60px;text-align:center;" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button class="btn-ok" style="width:auto;padding:8px 14px;" onclick="addMenuCategory()">Créer</button>
+    </div>
+
+    <div class="mm-items-list" id="mm-items-list"></div>
+
+    <div class="mm-addbox">
+      <div class="mm-addbox-label">AJOUTER UN PRODUIT</div>
+      <div class="mm-row-inputs">
+        <input type="text" class="mm-emoji-input" id="mm-new-emoji" placeholder="🧴" autocomplete="off" autocorrect="off" spellcheck="false">
+        <input type="text" class="mm-name-input" id="mm-new-name" placeholder="Nom du produit" autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="mm-price-row">
+        <input type="text" class="mm-price-field" id="mm-new-barcode" placeholder="Code-barres (optionnel)" autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="mm-price-row">
+        <input type="number" step="0.1" class="mm-price-field" id="mm-new-price" placeholder="Prix vente (DT)" inputmode="decimal" autocomplete="off">
+        <input type="number" step="0.1" class="mm-price-field" id="mm-new-cost" placeholder="Prix achat (DT)" inputmode="decimal" autocomplete="off">
+        <input type="number" step="1" class="mm-price-field" id="mm-new-qty" placeholder="Stock initial" inputmode="numeric" autocomplete="off">
+      </div>
+      <button class="btn-ok" onclick="addMenuItem()">＋ Ajouter le produit</button>
+    </div>
+
+    <button class="mcancel" onclick="document.getElementById('menu-manage-modal').style.display='none'">Fermer</button>
+  </div>
+</div>
+
+<!-- ══ RECEPTION MODAL ══ -->
+<div class="ov" id="recep-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="mb" style="max-width:500px;">
+    <div class="mt">📦 Réception de stock</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center;">Entrez les quantités reçues pour chaque produit</div>
+    <div id="recep-list" style="max-height:350px;overflow-y:auto;"></div>
+    <button class="btn-ok" style="margin-top:12px;" onclick="confirmReception()">✓ Valider la réception</button>
+    <button class="mcancel" onclick="document.getElementById('recep-modal').style.display='none'">Annuler</button>
+  </div>
+</div>
+
+<!-- PRINT AREA -->
+<div id="print-area"></div>
+
+<script>
+// ╔══════════════════════════════════════════════════════╗
+// ║          CLIENT CONFIGURATION — CHANGE PER CLIENT   ║
+// ╚══════════════════════════════════════════════════════╝
+const CLIENT_CONFIG = {
+  // ── Identity ──────────────────────────────────────────
+  name:        'PARAPHARMA PLUS',
+  tagline:     'Parapharmacie & Bien-être',
+  logo:        '💊',
+  logoLetter:  'P',
+  city:        'Tunis, Tunisie',
+  phone:       '+216 52 050 581',
+  currency:    'DT',
+
+  // ── Sync / Dashboard ──────────────────────────────────
+  syncEnabled: true,
+  syncUrl:     'https://servio.tn/api/sync',
+  syncKey:     'SRVO-PHARMA-DEMO-001',
+
+  // ── Users / PINs ──────────────────────────────────────
+  managerName: 'Dr. Nadia',
+  managerPin:  '1234',
+  cashierName: 'Amira',
+  cashierPin:  '0000',
+
+  // ── Retail specific ───────────────────────────────────
+  alertThreshold: 5,
+};
+
+const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
+const SYNC_API_URL = CLIENT_CONFIG.syncUrl;
+const SYNC_API_KEY = CLIENT_CONFIG.syncKey;
+
+// ═══════════════ DATA ═══════════════
+let MENU={
+  "Soins Visage":{icon:"🧴",items:[
+    {id:"sv1",name:"Crème Hydratante",e:"🧴",p:25,barcode:"6111234567890",cost:18,qty:20},
+    {id:"sv2",name:"Sérum Vitamine C",e:"💧",p:45,barcode:"6111234567891",cost:32,qty:15},
+    {id:"sv3",name:"Nettoyant Visage",e:"🫧",p:18,barcode:"6111234567892",cost:12,qty:30}
+  ]},
+  "Soins Corps":{icon:"🧼",items:[
+    {id:"sc1",name:"Lait Corporel",e:"🧴",p:22,barcode:"6111234567893",cost:15,qty:25},
+    {id:"sc2",name:"Gel Douche",e:"🚿",p:12,barcode:"6111234567894",cost:8,qty:40},
+    {id:"sc3",name:"Crème Mains",e:"🤲",p:9,barcode:"6111234567895",cost:6,qty:35}
+  ]},
+  "Hygiène":{icon:"🪥",items:[
+    {id:"hy1",name:"Dentifrice",e:"🪥",p:8,barcode:"6111234567896",cost:5,qty:50},
+    {id:"hy2",name:"Déodorant",e:"🧴",p:14,barcode:"6111234567897",cost:9,qty:30},
+    {id:"hy3",name:"Shampoing",e:"🧴",p:16,barcode:"6111234567898",cost:10,qty:25}
+  ]},
+  "Bébé":{icon:"👶",items:[
+    {id:"bb1",name:"Couches Pack",e:"👶",p:35,barcode:"6111234567899",cost:25,qty:20},
+    {id:"bb2",name:"Lait Bébé",e:"🍼",p:28,barcode:"6111234567900",cost:20,qty:15},
+    {id:"bb3",name:"Crème Change",e:"🧴",p:15,barcode:"6111234567901",cost:10,qty:25}
+  ]},
+  "Compléments":{icon:"💊",items:[
+    {id:"cp1",name:"Vitamine D",e:"💊",p:22,barcode:"6111234567902",cost:14,qty:30},
+    {id:"cp2",name:"Magnésium",e:"💊",p:18,barcode:"6111234567903",cost:11,qty:25},
+    {id:"cp3",name:"Omega 3",e:"💊",p:32,barcode:"6111234567904",cost:22,qty:20}
+  ]}
+};
+
+const USERS={
+  manager:{pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',color:'var(--gold-l)',bg:'rgba(74,144,217,.2)',letter:CLIENT_CONFIG.managerName.charAt(0),isManager:true},
+  caissier:{pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',color:'var(--blue)',bg:'rgba(74,144,217,.2)',letter:CLIENT_CONFIG.cashierName.charAt(0),isManager:false}
+};
+
+// ═══════════════ STATE ═══════════════
+let currentUser=null,currentPinUser=null,pinBuffer='';
+let cat=Object.keys(MENU)[0],items=[],disc=0,payMode='cash';
+let orderNum=1;
+let daily=0,hist=[];
+let lastOrderData=null;
+const STORE_KEY='retail-pos-state-v2';
+const MENU_KEY='retail-menu-v3';
+const SESSION_KEY='retail-session-v1';
+const STOCK_KEY='retail-stock-v1';
+
+// Queue for offline sales
+let syncQueue = JSON.parse(localStorage.getItem('retail-sync-queue') || '[]');
+let clotureQueue = JSON.parse(localStorage.getItem('retail-cloture-queue') || '[]');
+
+function saveQueue() { localStorage.setItem('retail-sync-queue', JSON.stringify(syncQueue)); }
+function saveClotureQueue() { localStorage.setItem('retail-cloture-queue', JSON.stringify(clotureQueue)); }
+
+// ═══════════════ STOCK MANAGEMENT ═══════════════
+// Stock is stored directly in MENU items (qty field) and persisted via MENU_KEY
+function decreaseStock(soldItems){
+  for(const si of soldItems){
+    // Find item in MENU by id
+    for(const catKey of Object.keys(MENU)){
+      const it = MENU[catKey].items.find(x=>x.id===si.id);
+      if(it){
+        it.qty = Math.max(0, (it.qty||0) - (si.qty||1));
+        break;
+      }
+    }
+  }
+  saveMenuToStorage();
+  // Sync updated stock to server after each sale
+  syncStockToServer();
+}
+
+// ── Sync full product catalog to server for dashboard display ──
+let _stockSyncTimer = null;
+async function syncStockToServer(){
+  if(!SYNC_ENABLED) return;
+  // Debounce: wait 2s after last call to batch multiple rapid sales
+  if(_stockSyncTimer) clearTimeout(_stockSyncTimer);
+  _stockSyncTimer = setTimeout(_doSyncStock, 2000);
+}
+async function _doSyncStock(){
+  try{
+    const items = [];
+    Object.keys(MENU).forEach(catKey => {
+      const catData = MENU[catKey];
+      catData.items.forEach(it => {
+        items.push({
+          item_id: it.id,
+          item_name: it.name,
+          item_emoji: it.e || '📦',
+          quantity: it.qty || 0,
+          barcode: it.barcode || '',
+          cost: it.cost || 0,
+          category: catKey,
+          sell_price: it.p || 0
+        });
+      });
+    });
+    if(items.length === 0) return;
+    await fetch(SYNC_API_URL.replace('/api/sync', '/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({ items })
+    });
+  }catch(e){ /* silent — stock sync is not critical */ }
+}
+// Periodic full stock sync every 5 minutes (keeps dashboard fresh)
+setInterval(()=>{ if(currentUser && SYNC_ENABLED) _doSyncStock(); }, 5 * 60 * 1000);
+// Initial sync after login (triggered in loginSuccess)
+
+function getStockAlerts(){
+  const alerts=[];
+  const threshold = CLIENT_CONFIG.alertThreshold;
+  Object.keys(MENU).forEach(c=>{
+    MENU[c].items.forEach(it=>{
+      if((it.qty||0) <= threshold) alerts.push({...it, category:c});
+    });
+  });
+  return alerts;
+}
+
+// ═══════════════ SYNC ═══════════════
+async function syncSale(od) {
+  if (!SYNC_ENABLED) return;
+  try {
+    const res = await fetch(SYNC_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify(od)
+    });
+    const data = await res.json();
+    if (data.ok) { flushQueue(); return true; }
+  } catch(e) {
+    syncQueue.push(od);
+    saveQueue();
+  }
+  return false;
+}
+
+async function flushQueue() {
+  if (!syncQueue.length) return;
+  const remaining = [];
+  for (const od of syncQueue) {
+    try {
+      const res = await fetch(SYNC_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+        body: JSON.stringify(od)
+      });
+      const data = await res.json();
+      if (!data.ok) remaining.push(od);
+    } catch(e) { remaining.push(od); }
+  }
+  syncQueue = remaining;
+  saveQueue();
+}
+
+async function syncCloture(data) {
+  if (!SYNC_ENABLED) return;
+  const url = SYNC_API_URL.replace('/api/sync', '/api/cloture');
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (json.ok) flushClotureQueue();
+  } catch(e) {
+    clotureQueue.push(data);
+    saveClotureQueue();
+  }
+}
+
+async function flushClotureQueue() {
+  if (!clotureQueue.length) return;
+  const url = SYNC_API_URL.replace('/api/sync', '/api/cloture');
+  const remaining = [];
+  for (const d of clotureQueue) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+        body: JSON.stringify(d)
+      });
+      const json = await res.json();
+      if (!json.ok) remaining.push(d);
+    } catch(e) { remaining.push(d); }
+  }
+  clotureQueue = remaining;
+  saveClotureQueue();
+}
+
+window.addEventListener('online', () => { flushQueue(); flushClotureQueue(); flash('☁ Synchronisation en cours...'); });
+
+// ═══════════════ BUSINESS DAY ═══════════════
+function todayKey(){
+  const d=new Date();
+  if (d.getHours() < 5) d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+let _businessDay = todayKey();
+function checkDayChange() {
+  const now = todayKey();
+  if (now !== _businessDay) {
+    _businessDay = now;
+    orderNum = 1; daily = 0; hist = [];
+    localStorage.removeItem(STORE_KEY);
+    businessStateReady = null;
+    if (currentSession && currentSession.date !== now) {
+      currentSession = null; saveSessionToStorage();
+    }
+    const onum = document.getElementById('onum');
+    if (onum) onum.textContent = '#001';
+    const dt = document.getElementById('dt');
+    if (dt) dt.textContent = 'Ventes du jour : 0.000 DT';
+    updateCaisseButton(); updBtn();
+    flash('🌅 Nouveau jour — Ticket #001');
+  }
+}
+setInterval(checkDayChange, 30000);
+
+// ═══════════════ CASH SESSION ═══════════════
+let currentSession = null;
+function f2(n){ return Number(n).toFixed(3); }
+
+// ═══════════════ CASH DRAWER — Toast/Square model ═══════════════
+// WHEN IT OPENS: only when physical cash actually moves.
+//   cash sale · pay-in (ajout) · pay-out (retrait) · cash settlement of a debt
+// Card, mobile and credit sales never open it — no cash changes hands.
+//
+// WHY A SETTING AND NOT A PROMPT: the reasons you would not want it to open
+// (drawer already open, cash going to a drop safe, no drawer wired up) are
+// properties of the TILL, not of the transaction, so they belong in config.
+// Toast exposes exactly this as a per-device option ("Open Cash Drawer: open
+// the cash drawer when a cash payment is made?"); Lightspeed has a Cash Only
+// mode. None of them ask the cashier on every sale — that would cost a tap per
+// transaction and prompt fatigue would make it meaningless anyway.
+//
+// WHY EVERY OPEN IS LOGGED: an unexplained drawer open is a primary theft
+// signal, which is why Toast reports no-sale events in its Cash & Loss
+// Management exception reports. The log is pushed to the cloud and is
+// deliberately NOT viewable inside the EXE, because owners routinely give the
+// manager PIN to their cashiers.
+const DRAWER_CFG_KEY = 'servio-drawer-cfg-v1';
+const DRAWER_LOG_KEY = 'servio-drawer-log-v1';
+const DRAWER_DEFAULTS = { onCashSale:true, onCashMovement:true, onCreditPayment:true };
+let DRAWER_CFG = Object.assign({}, DRAWER_DEFAULTS);
+
+function loadDrawerCfg(){
+  try{
+    const raw = localStorage.getItem(DRAWER_CFG_KEY);
+    if(raw) DRAWER_CFG = Object.assign({}, DRAWER_DEFAULTS, JSON.parse(raw) || {});
+  }catch(e){ DRAWER_CFG = Object.assign({}, DRAWER_DEFAULTS); }
+}
+function saveDrawerCfg(){
+  try{ localStorage.setItem(DRAWER_CFG_KEY, JSON.stringify(DRAWER_CFG)); }catch(e){}
+}
+loadDrawerCfg();
+
+// Single choke point for EVERY drawer open, so nothing can open it unlogged.
+// reason: 'cash_sale' | 'pay_in' | 'pay_out' | 'credit_payment' | 'no_sale'
+function openDrawer(reason, amount, note){
+  const gate = { cash_sale:'onCashSale', pay_in:'onCashMovement',
+                 pay_out:'onCashMovement', credit_payment:'onCreditPayment' }[reason];
+  // 'no_sale' has no gate — a manual open is always honoured, and always logged.
+  if(gate && DRAWER_CFG[gate] === false){
+    logDrawerEvent(reason, amount, note, false);
+    return false;
+  }
+  // Debounce so a double-tap cannot fire the solenoid twice.
+  if(Date.now() - (window.__lastDrawerKickAt || 0) < 1200) return false;
+  window.__lastDrawerKickAt = Date.now();
+  try{ if(window.electronAPI && window.electronAPI.openCashDrawer) window.electronAPI.openCashDrawer(); }catch(e){}
+  logDrawerEvent(reason, amount, note, true);
+  return true;
+}
+
+// Manual open ("No Sale"). Manager-only, exactly like Toast's 1.7 Cash Drawer
+// Access permission, and always recorded.
+function openDrawerNoSale(){
+  if(!currentUser || !USERS[currentUser] || !USERS[currentUser].isManager){
+    flash('Accès réservé au Manager.');
+    return;
+  }
+  const note = (prompt('Motif d\'ouverture du tiroir :') || '').trim();
+  if(!note){ flash('Motif obligatoire'); return; }
+  window.__lastDrawerKickAt = 0;              // never debounce an explicit request
+  openDrawer('no_sale', null, note);
+  flash('🔓 Tiroir ouvert — ' + note);
+}
+
+function logDrawerEvent(reason, amount, note, opened){
+  const entry = {
+    uid: 'D' + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    reason: reason,
+    amount: (typeof amount === 'number' && isFinite(amount)) ? amount : null,
+    note: String(note || '').slice(0,160),
+    opened: !!opened,
+    actor: (currentUser && USERS[currentUser] && USERS[currentUser].name) || '',
+    isManager: !!(currentUser && USERS[currentUser] && USERS[currentUser].isManager),
+    sessionId: (currentSession && currentSession.sid) || '',
+    ts: new Date().toISOString(),
+  };
+  try{
+    const log = JSON.parse(localStorage.getItem(DRAWER_LOG_KEY) || '[]');
+    log.push(entry);
+    while(log.length > 800) log.shift();       // keep storage bounded
+    localStorage.setItem(DRAWER_LOG_KEY, JSON.stringify(log));
+  }catch(e){}
+  pushDrawerLog();
+}
+
+// Ship the log to the cloud, offline-safe. Entries stay locally until the
+// server confirms, so a till that is offline all day still reports later.
+let _drawerPushTimer = null;
+function pushDrawerLog(){
+  if(!SYNC_ENABLED) return;
+  if(_drawerPushTimer) clearTimeout(_drawerPushTimer);
+  _drawerPushTimer = setTimeout(sendDrawerLog, 2500);
+}
+async function sendDrawerLog(){
+  if(!SYNC_ENABLED) return;
+  let log = [];
+  try{ log = JSON.parse(localStorage.getItem(DRAWER_LOG_KEY) || '[]'); }catch(e){ return; }
+  const pending = log.filter(e => !e.sent);
+  if(!pending.length) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/drawer-log'), {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({ key: SYNC_API_KEY, events: pending }),
+    });
+    const data = await res.json();
+    if(data && data.ok){
+      const done = new Set(pending.map(e => e.uid));
+      for(const e of log) if(done.has(e.uid)) e.sent = true;
+      // Drop confirmed entries older than 7 days — the cloud is the record now.
+      const cutoff = Date.now() - 7*24*3600*1000;
+      const kept = log.filter(e => !e.sent || Date.parse(e.ts) > cutoff);
+      localStorage.setItem(DRAWER_LOG_KEY, JSON.stringify(kept));
+    }
+  }catch(e){ /* offline — retried on reconnect */ }
+}
+
+// ── Drawer settings UI (manager only, device-level like Toast) ──
+function showDrawerSettings(){
+  if(!currentUser || !USERS[currentUser] || !USERS[currentUser].isManager){
+    flash('Accès réservé au Manager.'); return;
+  }
+  const row = (k, label, hint) => `
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--div);cursor:pointer;text-align:left">
+      <input type="checkbox" id="drw-${k}" ${DRAWER_CFG[k] !== false ? 'checked' : ''} style="margin-top:3px">
+      <span>
+        <span style="font-size:13px;font-weight:600;display:block">${label}</span>
+        <span style="font-size:10px;color:var(--muted)">${hint}</span>
+      </span>
+    </label>`;
+  createSessionModal(`
+    <div class="session-icon">🔓</div>
+    <div class="session-title">Tiroir-caisse</div>
+    <div class="session-sub">Réglages de cette caisse. Le tiroir ne s'ouvre que si de l'argent liquide bouge réellement.</div>
+    ${row('onCashSale',      'Vente en espèces',        'Carte / mobile / crédit n\'ouvrent jamais le tiroir')}
+    ${row('onCashMovement',  'Ajout / retrait de fond', 'Mouvements de caisse (pay-in / pay-out)')}
+    ${row('onCreditPayment', 'Dette réglée en espèces', 'Si le client règle par carte, le tiroir reste fermé')}
+    <button class="btn-session-open" style="margin-top:14px" onclick="saveDrawerSettings()">✓ Enregistrer</button>
+    <button class="mcancel" style="margin-top:8px" onclick="openDrawerNoSale()">🔓 Ouvrir le tiroir maintenant</button>
+    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Fermer</button>
+  `);
+}
+function saveDrawerSettings(){
+  for(const k of Object.keys(DRAWER_DEFAULTS)){
+    const el = document.getElementById('drw-' + k);
+    if(el) DRAWER_CFG[k] = !!el.checked;
+  }
+  saveDrawerCfg();
+  destroySessionModal();
+  flash('✓ Réglages tiroir enregistrés');
+}
+
+// ── Opening float: a historical fact, never mutated ──
+// Older builds mutated fondInitial on every cash movement. For a session opened
+// by such a build we recover the true opening float by undoing that mutation,
+// once, then persist it so this never runs again.
+function sessionOpeningFond(){
+  if(!currentSession) return 0;
+  if(typeof currentSession.fondOpening === 'number') return currentSession.fondOpening;
+  return +currentSession.fondInitial || 0;
+}
+function migrateSessionFond(s){
+  if(s && typeof s.fondOpening !== 'number'){
+    const movs = Array.isArray(s.cashMovements) ? s.cashMovements : [];
+    const inS  = movs.filter(m => m.type === 'in').reduce((a,m) => a + (+m.amount || 0), 0);
+    const outS = movs.filter(m => m.type === 'out').reduce((a,m) => a + (+m.amount || 0), 0);
+    const stored = +s.fondInitial || 0;
+    const candidate = stored - inS + outS;
+
+    // The old build clamped with Math.max(0, …). If a retrait ever exceeded the
+    // running float the excess was destroyed, and no arithmetic can recover the
+    // true opening float. Detect that by replaying the old clamped maths from
+    // the candidate: reproducing `stored` without hitting the clamp proves the
+    // recovery is exact.
+    let bal = candidate, clamped = false;
+    for(const m of movs){
+      const amt = +m.amount || 0;
+      if(m.type === 'in'){ bal += amt; }
+      else { const next = bal - amt; if(next < 0) clamped = true; bal = Math.max(0, next); }
+    }
+    s.fondOpening = candidate;
+    if(clamped || Math.abs(bal - stored) > 0.0005){
+      // Unrecoverable. Do NOT pretend: flag it so the clôture asks the manager
+      // to confirm the opening float rather than reporting a bogus écart.
+      s.fondOpeningUncertain = true;
+    }
+    s.fondInitial = s.fondOpening;   // fondInitial now means what its name says
+    try{ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }catch(e){}
+  }
+  return s;
+}
+
+function saveSessionToStorage(){
+  if(currentSession) localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
+  else localStorage.removeItem(SESSION_KEY);
+}
+function loadSessionFromStorage(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(s && s.date === todayKey()) return migrateSessionFond(s);
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }catch(e){ return null; }
+}
+
+function updateCaisseButton(){
+  const btn = document.getElementById('btn-cloturer');
+  const btnFond = document.getElementById('btn-ajout-fond');
+  if(!btn) return;
+  if(currentSession){
+    btn.textContent = '🔒 Clôturer la caisse';
+    btn.style.borderColor = 'rgba(224,82,82,.3)';
+    btn.style.color = 'var(--red)';
+    btn.onclick = cloturerJournee;
+    if(btnFond) btnFond.style.display = '';
+  } else {
+    btn.textContent = '💰 Ouvrir la caisse';
+    btn.style.borderColor = 'rgba(61,184,122,.3)';
+    btn.style.color = 'var(--green)';
+    btn.onclick = showOpenCaisseModal;
+    if(btnFond) btnFond.style.display = 'none';
+  }
+}
+
+function createSessionModal(innerHtml) {
+  if(!currentUser) return;
+  destroySessionModal();
+  const wrap = document.createElement('div');
+  wrap.className = 'session-modal-wrap';
+  wrap.id = 'session-modal';
+  const box = document.createElement('div');
+  box.className = 'session-box';
+  box.id = 'session-box-content';
+  box.innerHTML = innerHtml;
+  wrap.appendChild(box);
+  document.body.appendChild(wrap);
+}
+function destroySessionModal() {
+  const existing = document.getElementById('session-modal');
+  if (existing) existing.remove();
+}
+
+async function showOpenCaisseModal(){
+  const caissierName = currentUser ? USERS[currentUser].name : 'Caissier';
+  createSessionModal(`
+    <div class="session-icon">💰</div>
+    <div class="session-title">Ouverture de Caisse</div>
+    <div class="session-sub">Caissier: <strong>${caissierName}</strong></div>
+    <div class="session-input-row">
+      <label>Fond de caisse initial (DT)</label>
+      <input class="session-inp" type="number" id="fond-inp" placeholder="0.000"
+        step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <button class="btn-session-open" onclick="confirmOpenCaisse()" style="margin-top:8px">✓ Ouvrir la caisse</button>
+  `);
+  setTimeout(() => { const i = document.getElementById('fond-inp'); if(i) i.focus(); }, 100);
+}
+
+async function confirmOpenCaisse(){
+  const fondVal = parseFloat(document.getElementById('fond-inp')?.value) || 0;
+  const caissierName = USERS[currentUser]?.name || 'Caissier';
+  const now = new Date();
+  const sessionData = { businessDate: todayKey(), cashier: caissierName, openedAt: now.toLocaleTimeString('fr-TN'), fondInitial: fondVal };
+
+  let sessionId = null;
+  if (window.electronAPI?.saveSession) {
+    const res = await window.electronAPI.saveSession(sessionData);
+    if (res?.ok) sessionId = res.id;
+  }
+
+  const sid = 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  currentSession = { id: sessionId, sid, fondInitial: fondVal, fondOpening: fondVal, openedAt: sessionData.openedAt, openedAtISO: new Date().toISOString(), cashier: caissierName, date: todayKey() };
+  saveSessionToStorage();
+  destroySessionModal();
+
+  const badge = document.getElementById('session-badge-hdr');
+  const disp  = document.getElementById('session-fond-display');
+  if (badge && disp) { disp.textContent = caissierName; badge.style.display = ''; }
+
+  updateCaisseButton();
+  updBtn();
+  flash('✅ Caisse ouverte — ' + caissierName + ' · Fond: ' + f2(fondVal) + ' DT');
+  focusBarcode();
+}
+
+// ═══════════════ MENU PERSISTENCE ═══════════════
+function loadMenuFromStorage(){
+  try{
+    const raw=localStorage.getItem(MENU_KEY);
+    if(!raw)return;
+    const saved=JSON.parse(raw);
+    if(saved&&typeof saved==='object'&&Object.keys(saved).length)MENU=saved;
+  }catch(e){console.error('Menu load failed:',e);}
+}
+function saveMenuToStorage(){
+  try{localStorage.setItem(MENU_KEY,JSON.stringify(MENU));}catch(e){console.error('Menu save failed:',e);}
+}
+loadMenuFromStorage();
+if(!MENU[cat])cat=Object.keys(MENU)[0];
+
+// ═══════════════ STATE PERSISTENCE ═══════════════
+function saveState(){
+  localStorage.setItem(STORE_KEY,JSON.stringify({
+    date:todayKey(),
+    draft:{items,disc,payMode,cat}
+  }));
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STORE_KEY);
+    if(!raw)return;
+    const state=JSON.parse(raw);
+    if(state.date!==todayKey()){ localStorage.removeItem(STORE_KEY); return; }
+    if(state.draft){
+      items=Array.isArray(state.draft.items)?state.draft.items:[];
+      disc=Number(state.draft.disc)||0;
+      payMode=['cash','card','mob'].includes(state.draft.payMode)?state.draft.payMode:'cash';
+      cat=state.draft.cat&&MENU[state.draft.cat]?state.draft.cat:Object.keys(MENU)[0];
+    }
+  }catch(e){ localStorage.removeItem(STORE_KEY); }
+}
+
+let businessStateReady = null;
+let sqliteAvailable = true;
+const SQLITE_LOAD_TIMEOUT_MS = 8000;
+
+function withTimeout(promise, ms, label){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label || 'timeout')), ms)),
+  ]);
+}
+
+async function hydrateBusinessState(){
+  if (businessStateReady) return businessStateReady;
+  businessStateReady = (async () => {
+    try{
+      if (!window.electronAPI?.getSales) return;
+      if (window.electronAPI.getDbStatus) {
+        const status = await withTimeout(window.electronAPI.getDbStatus(), SQLITE_LOAD_TIMEOUT_MS, 'SQLite status timeout');
+        if (!status?.available) { sqliteAvailable = false; hist=[]; daily=0; orderNum=1; return; }
+      }
+      const sales = await withTimeout(window.electronAPI.getSales(), SQLITE_LOAD_TIMEOUT_MS, 'SQLite load timeout');
+      if (!Array.isArray(sales)) { sqliteAvailable = false; hist=[]; daily=0; orderNum=1; return; }
+      hist = sales.map(sale => ({
+        num: sale.num, businessDate: sale.businessDate, date: sale.date, time: sale.time,
+        items: Array.isArray(sale.items) ? sale.items : [],
+        s: sale.sub, d: sale.discount, disc: sale.disc, g: sale.grand,
+        payMode: sale.payMethod, r: sale.received, monnaie: sale.monnaie,
+        cashier: sale.cashier,
+        sessionId: sale.sessionId || '',
+      }));
+      const currentDay = todayKey();
+      hist = hist.filter(sale => sale.businessDate === currentDay);
+      daily = hist.reduce((sum, s) => sum + (Number(s.g) || 0), 0);
+      const todaySales = hist.filter(s => s.businessDate === currentDay);
+      orderNum = todaySales.length ? Math.max(...todaySales.map(s => Number(s.num) || 0)) + 1 : 1;
+      sqliteAvailable = true;
+    }catch(error){
+      console.error('SQLite load failed:', error);
+      sqliteAvailable = false; hist=[]; daily=0; orderNum=1;
+    }
+  })();
+  return businessStateReady;
+}
+
+loadState();
+hydrateBusinessState().catch(e => console.error('SQLite load failed:', e));
+
+// ═══════════════ CLOCK ═══════════════
+function tick(){
+  const n=new Date();
+  const el=document.getElementById('clock');
+  if(el)el.textContent=n.toLocaleTimeString('fr-TN');
+  const dl=document.getElementById('datel');
+  if(dl)dl.textContent=n.toLocaleDateString('fr-TN',{weekday:'short',day:'numeric',month:'short'});
+}
+tick();setInterval(tick,1000);
+
+// ═══════════════ LOGIN ═══════════════
+function selectUser(role){
+  currentPinUser=role;
+  document.getElementById('user-list').style.display='none';
+  document.getElementById('pin-wrap').style.display='block';
+  document.getElementById('pin-title').textContent=`PIN — ${USERS[role].name}`;
+  pinBuffer='';updateDots();
+}
+function backToUsers(){
+  document.getElementById('user-list').style.display='flex';
+  document.getElementById('pin-wrap').style.display='none';
+  document.getElementById('pin-error').style.display='none';
+  pinBuffer='';updateDots();
+}
+function pinKey(k){if(pinBuffer.length>=4)return;pinBuffer+=k;updateDots();if(pinBuffer.length===4)checkPin();}
+function pinDel(){pinBuffer=pinBuffer.slice(0,-1);updateDots();}
+function pinClear(){pinBuffer='';updateDots();}
+function updateDots(){for(let i=0;i<4;i++)document.getElementById('d'+i).classList.toggle('filled',i<pinBuffer.length);}
+function checkPin(){
+  const u=USERS[currentPinUser];
+  if(pinBuffer===u.pin){loginSuccess(currentPinUser);}
+  else{
+    document.getElementById('pin-error').style.display='block';
+    pinBuffer='';updateDots();
+    setTimeout(()=>{document.getElementById('pin-error').style.display='none';},2000);
+  }
+}
+
+async function loginSuccess(role){
+  try{ await hydrateBusinessState(); }catch(error){ sqliteAvailable=false; hist=[]; daily=0; orderNum=1; }
+  currentUser=role;
+  const u=USERS[role];
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('hdr').style.display='flex';
+  document.getElementById('main').style.display='flex';
+  document.getElementById('sb').style.display='flex';
+  document.getElementById('s-av').textContent=u.letter;
+  document.getElementById('s-av').style.background=u.bg;
+  document.getElementById('s-av').style.color=u.color;
+  document.getElementById('s-name').textContent=u.name;
+  if(u.isManager){
+    document.getElementById('btn-dash').style.display='';
+    document.getElementById('btn-menu-manage').style.display='';
+    document.getElementById('btn-cloturer').style.display='';
+    document.getElementById('btn-ajout-fond').style.display='none';
+    document.getElementById('btn-pins').style.display='';
+    document.getElementById('btn-printer').style.display='';
+  }else{
+    document.getElementById('btn-dash').style.display='none';
+    document.getElementById('btn-menu-manage').style.display='none';
+    document.getElementById('btn-cloturer').style.display='none';
+    document.getElementById('btn-ajout-fond').style.display='none';
+    document.getElementById('btn-pins').style.display='none';
+    document.getElementById('btn-printer').style.display='none';
+  }
+  document.getElementById('session-badge-hdr').style.display='none';
+  currentSession = null;
+  document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
+  document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',[0,5,10,15][i]===disc));
+  document.querySelectorAll('.pb').forEach(b=>b.classList.remove('on'));
+  const pb=document.getElementById('p-'+payMode);
+  if(pb)pb.classList.add('on');
+  document.getElementById('cs').style.display=payMode==='cash'?'':'none';
+  buildCats();buildGrid();renderOrd();
+  if(!sqliteAvailable) flash('⚠ Historique SQLite indisponible');
+  else flash('✓ Bienvenue, '+u.name+' !');
+
+  // Initial stock sync to server on login
+  setTimeout(()=>_doSyncStock(), 3000);
+  const savedSession = loadSessionFromStorage();
+  if(savedSession){
+    currentSession = savedSession;
+    const badge = document.getElementById('session-badge-hdr');
+    const disp  = document.getElementById('session-fond-display');
+    if(badge && disp){ disp.textContent = savedSession.cashier; badge.style.display=''; }
+    flash('✓ Session reprise — ' + savedSession.cashier);
+    updateCaisseButton(); updBtn();
+    setTimeout(()=>focusBarcode(),50);
+  } else {
+    updateCaisseButton(); updBtn();
+    setTimeout(()=>showOpenCaisseModal(), 50);
+  }
+}
+
+function logout(){
+  if(!confirm('Déconnecter '+USERS[currentUser].name+' ?'))return;
+  currentUser=null;currentPinUser=null;pinBuffer='';
+  items=[];disc=0;payMode='cash';lastOrderData=null;
+  saveState();
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('hdr').style.display='none';
+  document.getElementById('main').style.display='none';
+  document.getElementById('sb').style.display='none';
+  document.getElementById('user-list').style.display='flex';
+  document.getElementById('pin-wrap').style.display='none';
+}
+
+// ═══════════════ CATEGORIES ═══════════════
+function buildCats(){
+  const el=document.getElementById('cat-list');
+  el.innerHTML=Object.keys(MENU).map(c=>`
+    <div class="cat-btn${c===cat?' on':''}" onclick="selCat('${c}')">
+      <span class="cat-icon">${MENU[c].icon}</span><span>${c}</span>
+    </div>`).join('');
+}
+function selCat(c){cat=c;document.getElementById('srch').value='';buildCats();buildGrid();saveState();}
+
+// ═══════════════ GRID ═══════════════
+function buildGrid(list=null){
+  const grid=document.getElementById('grid');
+  const data=MENU[cat];
+  const items2=list||data.items;
+  document.getElementById('cat-title').textContent=list?'Résultats':''+data.icon+'  '+cat;
+  const threshold = CLIENT_CONFIG.alertThreshold;
+  grid.innerHTML=items2.map(it=>{
+    const stockQty = it.qty||0;
+    let stockClass='', stockLabel='Stock: '+stockQty, rupture='';
+    if(stockQty<=0){ stockClass='out'; stockLabel='RUPTURE'; rupture='<div class="pc-rupture">RUPTURE</div>'; }
+    else if(stockQty<=threshold){ stockClass='low'; stockLabel='Stock: '+stockQty+' ⚠'; }
+    const visual=it.img
+      ?`<img class="pc-img" src="${it.img}" alt="${it.name}">`
+      :`<div class="pc-em">${it.e}</div>`;
+    return`<div class="pc" onclick='addI(${JSON.stringify({...it,img:undefined}).replace(/'/g,"&#39;")})'>
+      ${rupture}
+      ${visual}
+      <div class="pc-nm">${it.name}</div>
+      <div class="pc-stock ${stockClass}">${stockLabel}</div>
+      <div class="pc-pr">${f(it.p)} <span>${CLIENT_CONFIG.currency}</span></div>
+      <div class="pc-add">+</div>
+    </div>`;
+  }).join('');
+  if(!items2.length)grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:50px;color:var(--muted)"><div style="font-size:36px;margin-bottom:8px">🔍</div>Aucun produit</div>`;
+}
+
+function filterProd(){
+  const q=document.getElementById('srch').value.toLowerCase().trim();
+  if(!q){buildGrid();return;}
+  const res=[];
+  Object.values(MENU).forEach(c=>c.items.forEach(it=>{
+    if(it.name.toLowerCase().includes(q)) res.push(it);
+  }));
+  buildGrid(res);
+}
+
+// ═══════════════ BARCODE SCANNING ═══════════════
+function focusBarcode(){
+  const inp = document.getElementById('barcode-inp');
+  if(inp && !document.querySelector('.session-modal-wrap') && !document.querySelector('.ov[style*="display: flex"]') && !document.querySelector('.ov[style*="display:flex"]')){
+    inp.focus({preventScroll:true});
+  }
+}
+
+function handleBarcodeScan(code){
+  code = code.trim();
+  if(!code) return;
+  // Search all items for matching barcode
+  let found = null;
+  for(const catKey of Object.keys(MENU)){
+    const it = MENU[catKey].items.find(x=>x.barcode===code);
+    if(it){ found = {item:it, cat:catKey}; break; }
+  }
+  const inp = document.getElementById('barcode-inp');
+  if(found){
+    addItem(found.item.id, found.item.name, found.item.p, found.item.e, found.cat);
+    flash('✓ '+found.item.e+' '+found.item.name+' ajouté');
+  } else {
+    flash('⚠ Produit non trouvé: '+code);
+    inp.style.borderColor='var(--red)';
+    setTimeout(()=>{inp.style.borderColor='var(--gold)';},1500);
+  }
+  inp.value='';
+  setTimeout(()=>focusBarcode(),50);
+}
+
+// Barcode input listener
+document.addEventListener('DOMContentLoaded', ()=>{
+  const barcodeInp = document.getElementById('barcode-inp');
+  if(barcodeInp){
+    barcodeInp.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        handleBarcodeScan(barcodeInp.value);
+      }
+    });
+  }
+});
+
+// ═══════════════ ADD ITEMS ═══════════════
+function addI(it){
+  addItem(it.id, it.name, it.p, it.e, cat);
+}
+function addItem(id, name, p, e, itemCat){
+  const ex=items.find(i=>i.id===id);
+  if(ex) ex.qty++;
+  else items.push({id, name, p, e, qty:1, cat:itemCat});
+  // Warn if stock is 0
+  const menuItem = findMenuItemById(id);
+  if(menuItem && (menuItem.qty||0) <= 0){
+    flash('⚠ RUPTURE — '+name+' (stock: 0)');
+  }
+  renderOrd();saveState();
+}
+
+function findMenuItemById(id){
+  for(const catKey of Object.keys(MENU)){
+    const it = MENU[catKey].items.find(x=>x.id===id);
+    if(it) return it;
+  }
+  return null;
+}
+
+// ═══════════════ ORDER RENDER ═══════════════
+function renderOrd(){
+  const el=document.getElementById('oi');
+  if(!items.length){
+    el.innerHTML=`<div class="empty"><div class="ei">🛒</div><p>Panier vide.<br>Scannez ou touchez un produit.</p></div>`;
+  }else{
+    el.innerHTML=items.map(it=>`
+      <div class="oi">
+        <div class="qc">
+          <button class="qb" onclick="chgQ('${it.id}',-1)">−</button>
+          <span class="qv">${it.qty}</span>
+          <button class="qb" onclick="chgQ('${it.id}',1)">+</button>
+        </div>
+        <div class="ii">
+          <div class="in">${it.e} ${it.name}</div>
+          <div class="isub">${f(it.p)} × ${it.qty}</div>
+        </div>
+        <div class="ip">${f(it.p*it.qty)} ${CLIENT_CONFIG.currency}</div>
+        <div class="id" onclick="rmI('${it.id}')">✕</div>
+      </div>`).join('');
+  }
+  calcTots();renderQA();updBtn();
+}
+function chgQ(id,d){const i=items.findIndex(x=>x.id===id);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
+function rmI(id){items=items.filter(x=>x.id!==id);renderOrd();saveState();}
+function clearOrd(){if(!items.length)return;if(confirm('Vider le panier ?')){items=[];disc=0;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+
+// ═══════════════ TOTALS ═══════════════
+function getGrand(){const s=items.reduce((a,i)=>a+i.p*i.qty,0);return s-s*disc/100;}
+function calcTots(){
+  const s=items.reduce((a,i)=>a+i.p*i.qty,0);
+  const d=s*disc/100,g=s-d;
+  document.getElementById('sub').textContent=f(s)+' '+CLIENT_CONFIG.currency;
+  document.getElementById('gt').textContent=f(g)+' '+CLIENT_CONFIG.currency;
+  if(disc>0){
+    document.getElementById('dr').style.display='flex';
+    document.getElementById('dl').textContent=`Remise ${disc}%`;
+    document.getElementById('dv').textContent=`- ${f(d)} ${CLIENT_CONFIG.currency}`;
+  }else{document.getElementById('dr').style.display='none';}
+  calcM();
+}
+function setDisc(v,btn){
+  disc=v;
+  document.querySelectorAll('.db').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  calcTots(); saveState();
+}
+
+// ═══════════════ PAYMENT ═══════════════
+function selPay(m,btn){
+  payMode=m;
+  document.querySelectorAll('.pb').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('cs').style.display=m==='cash'?'':'none';
+  if(m==='cash'){setTimeout(()=>{const cr=document.getElementById('cr');if(cr&&!cr.value){cr.focus({preventScroll:true});}},80);}
+  updBtn(); saveState();
+}
+function renderQA(){
+  const g=getGrand();
+  const a=[Math.ceil(g/5)*5,Math.ceil(g/10)*10,Math.ceil(g/20)*20,50,100].filter((v,i,arr)=>arr.indexOf(v)===i&&v>=g).slice(0,4);
+  document.getElementById('qa').innerHTML=a.map(v=>`<button onclick="setRA(${v})">${v} ${CLIENT_CONFIG.currency}</button>`).join('');
+}
+function setRA(v){document.getElementById('cr').value=v;calcM();}
+function calcM(){
+  const crEl=document.getElementById('cr');
+  const r=crEl?parseFloat(crEl.value)||0:0;
+  const g=getGrand();
+  const mr=document.getElementById('mr');
+  if(r>=g&&g>0){mr.style.display='flex';document.getElementById('mv').textContent=f(r-g)+' '+CLIENT_CONFIG.currency;}
+  else mr.style.display='none';
+  updBtn();
+}
+function updBtn(){
+  const btn=document.getElementById('enc');
+  if(!btn) return;
+  const g=getGrand();
+  if(!currentSession){
+    btn.disabled=true;
+    btn.textContent='💰 Ouvrir la caisse d\'abord';
+    btn.style.opacity='.5';
+    return;
+  }
+  btn.textContent='✓  Encaisser & Imprimer';
+  btn.style.opacity='';
+  if(!items.length||g<=0){btn.disabled=true;return;}
+  const crEl=document.getElementById('cr');
+  const paid=crEl?parseFloat(crEl.value)||0:0;
+  btn.disabled=payMode==='cash'?paid<g:false;
+}
+
+// ═══════════════ ENCAISSEMENT ═══════════════
+function encaisser(){
+  return (async () => {
+  const g=getGrand(),s=items.reduce((a,i)=>a+i.p*i.qty,0),d=s-g;
+  const r=payMode==='cash'?(parseFloat(document.getElementById('cr').value)||0):g,monnaie=r-g;
+  const now=new Date();
+  const businessDate=todayKey();
+
+  // Calculate margin for this sale
+  let margin = 0;
+  items.forEach(it=>{
+    const menuIt = findMenuItemById(it.id);
+    if(menuIt && menuIt.cost) margin += (it.p - menuIt.cost) * it.qty;
+  });
+
+  const od={num:orderNum,date:now.toLocaleDateString('fr-TN'),time:now.toLocaleTimeString('fr-TN'),
+    items:[...items],s,d,disc,g,payMode,r,monnaie,margin,
+    businessDate,
+    cashier:USERS[currentUser].name,
+    sessionId:currentSession?.sid||''};
+
+  if(window.electronAPI?.saveSale){
+    try{
+      const saved = await window.electronAPI.saveSale(od);
+      if(saved && saved.ok === false){ sqliteAvailable = false; flash('⚠ Vente en mémoire seulement'); }
+    }catch(error){ sqliteAvailable = false; }
+  }
+
+  hist.push(od);daily+=g;lastOrderData=od;orderNum++;
+  document.getElementById('dt').textContent=`Ventes du jour : ${f(daily)} ${CLIENT_CONFIG.currency}`;
+
+  // Decrease stock
+  decreaseStock(od.items);
+
+  // Sync to server
+  syncSale(od);
+
+  // Show receipt
+  showReceipt(od);
+  // Auto-print. The drawer opens only on a cash tender — see openDrawer().
+  try{ if(od && od.payMode === 'cash') openDrawer('cash_sale', od.g, ''); }catch(e){}
+  doPrint();
+
+  // Reset
+  items=[];disc=0;payMode='cash';
+  document.getElementById('cr').value='';
+  document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.querySelectorAll('.pb').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.getElementById('cs').style.display='';
+  document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
+  saveState();
+  renderOrd();
+  buildGrid(); // refresh stock display
+  })();
+}
+
+// ═══════════════ RECEIPT ═══════════════
+function showReceipt(od){
+  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',credit:'Crédit'};
+  const lines=od.items.map(it=>`
+    <div class="rr"><span>${it.qty}x ${it.name}</span><span>${f(it.p*it.qty)} ${CLIENT_CONFIG.currency}</span></div>`
+  ).join('');
+  document.getElementById('rc').innerHTML=`
+    <div class="rc"><div class="rl">${CLIENT_CONFIG.name}</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:2px">${CLIENT_CONFIG.city}</div></div>
+    <div class="rdiv"></div>
+    <div class="rc" style="margin:6px 0 2px"><span style="font-size:11px;color:var(--muted)">TICKET DE CAISSE</span></div>
+    <div class="rc" style="font-size:28px;font-weight:700;color:var(--gold-l);letter-spacing:3px;line-height:1.1">#${String(od.num).padStart(3,'0')}</div>
+    <div class="rdiv"></div>
+    <div class="rr"><span>Date</span><span>${od.date}</span></div>
+    <div class="rr"><span>Heure</span><span>${od.time}</span></div>
+    <div class="rr"><span>Caissier</span><span>${od.cashier}</span></div>
+    <div class="rdiv"></div>
+    ${lines}
+    <div class="rdiv"></div>
+    <div class="rr"><span>Sous-total</span><span>${f(od.s)} ${CLIENT_CONFIG.currency}</span></div>
+    ${od.d>0?`<div class="rr" style="color:var(--red)"><span>Remise (${od.disc}%)</span><span>-${f(od.d)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+    <div class="rr rtot"><span>TOTAL</span><span>${f(od.g)} ${CLIENT_CONFIG.currency}</span></div>
+    <div class="rdiv"></div>
+    <div class="rr"><span>Paiement</span><span>${pm[od.payMode]||od.payMode||'—'}</span></div>
+    ${od.payMode==='cash'?`<div class="rr"><span>Reçu</span><span>${f(od.r)} ${CLIENT_CONFIG.currency}</span></div><div class="rr"><span>Monnaie</span><span>${f(od.monnaie)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+    <div class="rdiv"></div>
+    <div class="rc" style="font-size:10px;color:var(--muted)">Merci pour votre visite !<br>À bientôt chez ${CLIENT_CONFIG.name}</div>
+    <div class="rc" style="font-size:8px;color:var(--muted);margin-top:4px">by servio.tn ⚡</div>`;
+  document.getElementById('rm').style.display='flex';
+}
+
+function doPrint(){
+  if(!lastOrderData)return;
+  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',credit:'Crédit'};
+  const od=lastOrderData;
+  const lines=od.items.map(it=>
+    `<div style="display:flex;justify-content:space-between;"><span>${it.qty}x ${it.name}</span><span>${f(it.p*it.qty)} ${CLIENT_CONFIG.currency}</span></div>`
+  ).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>*{font-weight:900;}body{font-family:'Courier New',monospace;font-size:12px;max-width:280px;margin:0 auto;padding:16px;line-height:1.7;font-weight:900;}
+  .c{text-align:center;}.r{display:flex;justify-content:space-between;}.d{border-top:1px dashed #aaa;margin:7px 0;}
+  .big{font-size:16px;font-weight:900;letter-spacing:2px;}.sm{font-size:10px;color:#333;font-weight:900;}
+  .tot{font-weight:900;font-size:14px;}.numcmd{text-align:center;font-size:28px;font-weight:900;letter-spacing:3px;margin:6px 0;}</style></head>
+  <body>
+  <div class="c"><div class="big">${CLIENT_CONFIG.name}</div>
+  <div class="sm">${CLIENT_CONFIG.city}</div></div>
+  <div class="d"></div>
+  <div class="c"><div class="sm">TICKET DE CAISSE</div></div>
+  <div class="numcmd">#${String(od.num).padStart(3,'0')}</div>
+  <div class="d"></div>
+  <div class="r"><span>Date</span><span>${od.date} ${od.time}</span></div>
+  <div class="r"><span>Caissier</span><span>${od.cashier}</span></div>
+  <div class="d"></div>${lines}<div class="d"></div>
+  <div class="r"><span>Sous-total</span><span>${f(od.s)} ${CLIENT_CONFIG.currency}</span></div>
+  ${od.d>0?`<div class="r"><span>Remise (${od.disc}%)</span><span>-${f(od.d)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+  <div class="r tot"><span>TOTAL</span><span>${f(od.g)} ${CLIENT_CONFIG.currency}</span></div>
+  <div class="d"></div>
+  <div class="r"><span>Paiement</span><span>${pm[od.payMode]||od.payMode||'—'}</span></div>
+  ${od.payMode==='cash'?`<div class="r"><span>Reçu</span><span>${f(od.r)} ${CLIENT_CONFIG.currency}</span></div><div class="r"><span>Monnaie</span><span>${f(od.monnaie)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+  <div class="d"></div>
+  <div class="c sm">Merci pour votre visite !<br>À bientôt chez ${CLIENT_CONFIG.name}</div>
+  <div class="c" style="font-size:8px;margin-top:3px">by servio.tn ⚡</div>
+  </body></html>`;
+  if(window.electronAPI?.printReceipt){
+    window.electronAPI.printReceipt(html);
+  }else{
+    const w=window.open('','_blank','width=350,height=600');
+    if(w){w.document.write(html);w.document.close();setTimeout(()=>{w.print();w.close();},400);}
+  }
+}
+
+function newOrd(){
+  items=[];disc=0;payMode='cash';lastOrderData=null;
+  document.getElementById('cr').value='';
+  document.getElementById('rm').style.display='none';
+  document.getElementById('onum').textContent='#'+String(orderNum).padStart(3,'0');
+  document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.querySelectorAll('.pb').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.getElementById('cs').style.display='';
+  renderOrd();
+  flash('✓ Vente #'+String(orderNum).padStart(3,'0')+' ouverte');
+  saveState();
+  focusBarcode();
+}
+
+// ═══════════════ DASHBOARD (Manager) ═══════════════
+function showDash(){
+  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
+  const total=hist.reduce((a,h)=>a+h.g,0);
+  const count=hist.length;
+  const avg=count?total/count:0;
+  const cash=hist.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const totalMargin=hist.reduce((a,h)=>a+(h.margin||0),0);
+  const sold={};hist.forEach(h=>h.items.forEach(it=>{sold[it.name]=(sold[it.name]||0)+it.qty;}));
+  const topItem=Object.entries(sold).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('dash-kpis').innerHTML=`
+    <div class="kpi"><div class="kpi-val">${f(total)} ${CLIENT_CONFIG.currency}</div><div class="kpi-lbl">Total encaissé</div></div>
+    <div class="kpi"><div class="kpi-val">${count}</div><div class="kpi-lbl">Ventes</div></div>
+    <div class="kpi"><div class="kpi-val">${f(avg)} ${CLIENT_CONFIG.currency}</div><div class="kpi-lbl">Ticket moyen</div></div>
+    <div class="kpi"><div class="kpi-val">${f(cash)} ${CLIENT_CONFIG.currency}</div><div class="kpi-lbl">Espèces</div></div>
+    <div class="kpi"><div class="kpi-val">${f(totalMargin)} ${CLIENT_CONFIG.currency}</div><div class="kpi-lbl">Marge brute</div></div>
+    <div class="kpi"><div class="kpi-val" style="font-size:${topItem&&topItem[0].length>15?'14px':'24px'}">${topItem?topItem[0]:'—'}</div><div class="kpi-lbl">Produit le plus vendu</div>${topItem?`<div style="font-size:12px;color:var(--gold);margin-top:3px;font-weight:600">vendu ${topItem[1]} fois</div>`:''}</div>`;
+
+  renderDashStockUnit();
+
+  // Sales table
+  const tbl=document.getElementById('dash-rows');
+  if(!hist.length){
+    tbl.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Aucune vente</td></tr>`;
+  }else{
+    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',credit:'📒 Crédit'};
+    tbl.innerHTML=[...hist].reverse().map(h=>`
+      <tr>
+        <td>#${String(h.num).padStart(3,'0')}</td>
+        <td>${h.time}</td>
+        <td>${h.items.length} art.</td>
+        <td style="font-weight:700;color:var(--gold-l)">${f(h.g)} ${CLIENT_CONFIG.currency}</td>
+        <td>${pm[h.payMode]||h.payMode||'—'}</td>
+        <td style="font-size:10px;color:var(--muted)">${h.cashier||'—'}</td>
+      </tr>`).join('');
+  }
+  document.getElementById('dash-modal').style.display='flex';
+}
+
+// ═══════════════ PRODUCT MANAGEMENT (Manager) ═══════════════
+function showMenuManage(){
+  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
+  const sel=document.getElementById('mm-cat-select');
+  sel.innerHTML=Object.keys(MENU).map(c=>`<option value="${c}">${MENU[c].icon} ${c}</option>`).join('');
+  sel.value=cat;
+  document.getElementById('mm-add-cat-form').style.display='none';
+  renderMenuManage();
+  document.getElementById('menu-manage-modal').style.display='flex';
+}
+function showAddCatForm(){
+  const f=document.getElementById('mm-add-cat-form');
+  f.style.display=f.style.display==='flex'?'none':'flex';
+}
+function addMenuCategory(){
+  const name=document.getElementById('mm-newcat-name').value.trim();
+  const icon=document.getElementById('mm-newcat-icon').value.trim()||'📦';
+  if(!name){alert('Nom de catégorie requis.');return;}
+  if(MENU[name]){alert('Cette catégorie existe déjà.');return;}
+  MENU[name]={icon,items:[]};
+  saveMenuToStorage();
+  document.getElementById('mm-newcat-name').value='';
+  document.getElementById('mm-newcat-icon').value='';
+  document.getElementById('mm-add-cat-form').style.display='none';
+  const sel=document.getElementById('mm-cat-select');
+  sel.innerHTML=Object.keys(MENU).map(c=>`<option value="${c}">${MENU[c].icon} ${c}</option>`).join('');
+  sel.value=name;
+  renderMenuManage();buildCats();
+  flash('✓ Catégorie "'+name+'" créée');
+}
+function renderMenuManage(){
+  const c=document.getElementById('mm-cat-select').value;
+  const list=document.getElementById('mm-items-list');
+  const data=MENU[c];
+  const delBtn=document.getElementById('mm-del-cat-btn');
+  const isEmpty=data&&data.items.length===0;
+  delBtn.style.opacity=isEmpty?'1':'.4';
+  delBtn.style.cursor=isEmpty?'pointer':'not-allowed';
+  if(!data||!data.items.length){list.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px;">Aucun produit dans cette catégorie</div>';return;}
+  list.innerHTML=data.items.map(it=>{
+    const photoPreview = it.img ? `<img src="${it.img}" style="width:28px;height:28px;border-radius:5px;object-fit:cover;flex-shrink:0;cursor:pointer;" onclick="uploadItemPhoto('${c}','${it.id}')" title="Changer la photo">` : `<div style="width:28px;height:28px;border-radius:5px;background:var(--card);border:1px dashed var(--div);display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;flex-shrink:0;color:var(--muted);" onclick="uploadItemPhoto('${c}','${it.id}')" title="Ajouter une photo">📷</div>`;
+    return `<div class="mm-row">
+    ${photoPreview}
+    <input type="text" style="width:34px;text-align:center;font-size:16px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:3px;outline:none;flex-shrink:0;" value="${it.e}" autocomplete="off" onchange="updateItemEmoji('${c}','${it.id}',this.value)">
+    <input type="text" style="flex:1;min-width:80px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px 8px;color:var(--txt);font-size:12px;font-weight:500;outline:none;" value="${it.name}" autocomplete="off" onchange="updateItemName('${c}','${it.id}',this.value)">
+    <input type="text" style="width:90px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px;color:var(--muted);font-size:10px;outline:none;" value="${it.barcode||''}" placeholder="code-barres" autocomplete="off" onchange="updateItemBarcode('${c}','${it.id}',this.value)">
+    <input type="number" step="0.1" class="mm-price-input" value="${it.p}" title="Prix vente" inputmode="decimal" autocomplete="off" onchange="updateItemPrice('${c}','${it.id}',this.value)">
+    <input type="number" step="0.1" style="width:50px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px;color:var(--orange);font-size:11px;text-align:right;outline:none;" value="${it.cost||0}" title="Prix achat" inputmode="decimal" autocomplete="off" onchange="updateItemCost('${c}','${it.id}',this.value)">
+    <input type="number" step="1" style="width:45px;background:var(--card);border:1px solid var(--div);border-radius:5px;padding:5px;color:${(it.qty||0)<=CLIENT_CONFIG.alertThreshold?'var(--red)':'var(--green)'};font-size:11px;text-align:center;outline:none;font-weight:700;" value="${it.qty||0}" title="Stock" inputmode="numeric" autocomplete="off" onchange="updateItemQty('${c}','${it.id}',this.value)">
+    <div class="mm-del" onclick="deleteMenuItem('${c}','${it.id}')">✕</div>
+  </div>`;
+  }).join('');
+}
+function deleteMenuCategory(){
+  const c=document.getElementById('mm-cat-select').value;
+  if(!c||!MENU[c])return;
+  if(MENU[c].items.length>0){alert('Supprimez d\'abord tous les articles.');return;}
+  if(Object.keys(MENU).length<=1){alert('Il doit rester au moins une catégorie.');return;}
+  if(!confirm('Supprimer "'+c+'" ?'))return;
+  delete MENU[c];saveMenuToStorage();
+  if(cat===c) cat=Object.keys(MENU)[0];
+  const sel=document.getElementById('mm-cat-select');
+  sel.innerHTML=Object.keys(MENU).map(k=>`<option value="${k}">${MENU[k].icon} ${k}</option>`).join('');
+  sel.value=Object.keys(MENU)[0];
+  renderMenuManage();buildCats();buildGrid();
+  flash('✓ Catégorie supprimée');
+}
+function updateItemPrice(c,id,val){
+  const p=parseFloat(val);if(isNaN(p)||p<0){renderMenuManage();return;}
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.p=p;saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Prix mis à jour');}
+}
+function updateItemName(c,id,val){
+  const name=val.trim();if(!name){renderMenuManage();return;}
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.name=name;saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Nom mis à jour');}
+}
+function updateItemEmoji(c,id,val){
+  const emoji=val.trim()||'📦';
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.e=emoji;saveMenuToStorage();if(cat===c)buildGrid();}
+}
+function updateItemBarcode(c,id,val){
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.barcode=val.trim();saveMenuToStorage();flash('✓ Code-barres mis à jour');}
+}
+function updateItemCost(c,id,val){
+  const cost=parseFloat(val)||0;
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.cost=cost;saveMenuToStorage();flash('✓ Prix achat mis à jour');}
+}
+function updateItemQty(c,id,val){
+  const qty=parseInt(val)||0;
+  const it=MENU[c].items.find(x=>x.id===id);
+  if(it){it.qty=Math.max(0,qty);saveMenuToStorage();if(cat===c)buildGrid();flash('✓ Stock mis à jour');}
+}
+function deleteMenuItem(c,id){
+  if(!confirm('Supprimer ce produit ?'))return;
+  MENU[c].items=MENU[c].items.filter(x=>x.id!==id);
+  saveMenuToStorage();renderMenuManage();
+  if(cat===c)buildGrid();flash('✓ Produit supprimé');
+}
+function addMenuItem(){
+  const c=document.getElementById('mm-cat-select').value;
+  if(!c||!MENU[c]){alert('Sélectionnez une catégorie.');return;}
+  const name=document.getElementById('mm-new-name').value.trim();
+  const emoji=document.getElementById('mm-new-emoji').value.trim()||'📦';
+  const barcode=document.getElementById('mm-new-barcode').value.trim();
+  const p=parseFloat(document.getElementById('mm-new-price').value);
+  const cost=parseFloat(document.getElementById('mm-new-cost').value)||0;
+  const qty=parseInt(document.getElementById('mm-new-qty').value)||0;
+  if(!name){alert("Nom du produit requis.");return;}
+  if(isNaN(p)||p<0){alert('Prix de vente requis.');return;}
+  const id=c.replace(/[^a-zA-Z0-9]/g,'').slice(0,3).toLowerCase()+Date.now();
+  MENU[c].items.push({id,name,e:emoji,p,barcode,cost,qty});
+  saveMenuToStorage();
+  document.getElementById('mm-new-name').value='';
+  document.getElementById('mm-new-emoji').value='';
+  document.getElementById('mm-new-barcode').value='';
+  document.getElementById('mm-new-price').value='';
+  document.getElementById('mm-new-cost').value='';
+  document.getElementById('mm-new-qty').value='';
+  renderMenuManage();
+  if(cat===c)buildGrid();
+  flash('✓ "'+name+'" ajouté');
+}
+
+// ═══════════════ RECEPTION DE STOCK ═══════════════
+function showReception(){
+  // Build list of all products grouped by category
+  let html='';
+  Object.keys(MENU).forEach(c=>{
+    if(!MENU[c].items.length) return;
+    html+=`<div style="font-size:11px;font-weight:600;color:var(--gold-l);padding:8px 0 4px;border-bottom:1px solid var(--div);">${MENU[c].icon} ${c}</div>`;
+    MENU[c].items.forEach(it=>{
+      html+=`<div class="recep-row">
+        <span style="font-size:14px;">${it.e}</span>
+        <span class="recep-name">${it.name}</span>
+        <span class="recep-qty">Stk: ${it.qty||0}</span>
+        <input type="number" class="recep-inp" data-id="${it.id}" data-cat="${c}" placeholder="+0" min="0" inputmode="numeric" autocomplete="off">
+      </div>`;
+    });
+  });
+  document.getElementById('recep-list').innerHTML=html;
+  document.getElementById('menu-manage-modal').style.display='none';
+  document.getElementById('recep-modal').style.display='flex';
+}
+
+function confirmReception(){
+  const inputs = document.querySelectorAll('#recep-list .recep-inp');
+  let updated = 0;
+  inputs.forEach(inp=>{
+    const val = parseInt(inp.value);
+    if(!val || val<=0) return;
+    const id = inp.dataset.id;
+    const catKey = inp.dataset.cat;
+    const it = MENU[catKey]?.items.find(x=>x.id===id);
+    if(it){
+      it.qty = (it.qty||0) + val;
+      updated++;
+    }
+  });
+  if(updated===0){alert('Aucune quantité saisie.');return;}
+  saveMenuToStorage();
+  buildGrid();
+  document.getElementById('recep-modal').style.display='none';
+  flash('✓ Réception validée — '+updated+' produit(s) mis à jour');
+  syncStockToServer();
+}
+
+// ── Dashboard: per-product stock actions (Livraison/Perte/Inventaire) ────
+// ParaPharma's stock is always "by unit" (retail sells whole items, never a
+// recipe), so unlike table/counter clients there's no separate unit-vs-recipe
+// split — every product just gets these 3 buttons directly in the dashboard,
+// same local-qty-then-push-full-state model already used by confirmReception.
+const STOCK_ACTIONS = {
+  receive: { label:'Livraison',  field:'Quantité reçue',   icon:'📥' },
+  waste:   { label:'Perte',      field:'Quantité perdue',  icon:'🗑️' },
+  count:   { label:'Inventaire', field:'Quantité comptée', icon:'🔢' },
+};
+function renderDashStockUnit(){
+  const el = document.getElementById('dash-stock-unit');
+  if(!el) return;
+  const items = [];
+  Object.keys(MENU).forEach(c => MENU[c].items.forEach(it => items.push({...it, category:c})));
+  if(!items.length){
+    el.innerHTML = `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;padding:10px">Aucun produit.</div>`;
+    return;
+  }
+  const threshold = CLIENT_CONFIG.alertThreshold || 5;
+  el.innerHTML = items.map(it=>{
+    const q = it.qty||0;
+    const empty = q===0, low = q>0 && q<=threshold;
+    const badgeCol = empty ? 'var(--red)' : low ? 'var(--orange)' : 'var(--txt)';
+    const borderCol = empty ? 'rgba(224,82,82,.4)' : low ? 'rgba(214,148,58,.4)' : 'var(--div)';
+    return `<div class="kpi" style="border-color:${borderCol}">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${it.e||'📦'} ${it.name}</div>
+      <div style="font-size:24px;font-weight:700;color:${badgeCol};line-height:1.1">${q}</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${it.category}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
+        <button onclick="stockAction('${it.id}','${it.category.replace(/'/g,"\\'")}','receive')" style="flex:1;min-width:52px;padding:6px 4px;background:var(--gold);border:none;border-radius:5px;color:#080604;font-size:10px;font-weight:700;cursor:pointer">+ Livraison</button>
+        <button onclick="stockAction('${it.id}','${it.category.replace(/'/g,"\\'")}','waste')" style="flex:1;min-width:44px;padding:6px 4px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--txt);font-size:10px;font-weight:700;cursor:pointer">− Perte</button>
+      </div>
+      <button onclick="stockAction('${it.id}','${it.category.replace(/'/g,"\\'")}','count')"
+        style="display:block;width:100%;padding:7px 4px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--txt);font-size:10px;font-weight:700;cursor:pointer">
+        = Inventaire
+      </button>
+    </div>`;
+  }).join('');
+}
+function stockAction(id, catKey, kind){
+  const a = STOCK_ACTIONS[kind]; if(!a) return;
+  const it = MENU[catKey]?.items.find(x=>x.id===id);
+  if(!it) return;
+  createSessionModal(`
+    <div class="session-icon">${a.icon}</div>
+    <div class="session-title" style="font-size:15px">${a.label} — ${it.name}</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:10px">
+      ${kind==='count' ? 'Comptez ce qui est réellement présent.' : 'Ce nombre sera '+(kind==='receive'?'ajouté au':'retiré du')+' stock.'}
+    </div>
+    <div class="session-input-row">
+      <label>${a.field}</label>
+      <input class="session-inp" type="number" id="stk-act-qty" min="0" step="1" inputmode="numeric" autocomplete="off" placeholder="0">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="mcancel" style="flex:1;margin:0;padding:10px" onclick="destroySessionModal()">Annuler</button>
+      <button class="btn-session-open" style="flex:1;margin:0;padding:10px" onclick="confirmStockAction('${id}','${catKey.replace(/'/g,"\\'")}','${kind}')">✓ Enregistrer</button>
+    </div>`);
+  setTimeout(()=>{ const i=document.getElementById('stk-act-qty'); if(i) i.focus(); },100);
+}
+function confirmStockAction(id, catKey, kind){
+  const a = STOCK_ACTIONS[kind]; if(!a) return;
+  const el = document.getElementById('stk-act-qty');
+  const qty = parseInt(el?.value);
+  const valid = kind==='count' ? (qty>=0) : (qty>0);
+  if(!isFinite(qty) || !valid){ flash(kind==='count' ? 'Quantité invalide' : 'Quantité requise'); return; }
+  const it = MENU[catKey]?.items.find(x=>x.id===id);
+  if(!it) return;
+  if(kind==='count') it.qty = qty;
+  else if(kind==='receive') it.qty = (it.qty||0) + qty;
+  else it.qty = Math.max(0, (it.qty||0) - qty);
+  saveMenuToStorage();
+  destroySessionModal();
+  flash('✓ '+it.name+' — '+a.label.toLowerCase()+' enregistrée');
+  syncStockToServer();
+  renderDashStockUnit();
+}
+
+// ═══════════════ CLOTURE ═══════════════
+function cloturerJournee(){
+  if(!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
+
+  // Only count sales from THIS caisse session (filtered by sessionId)
+  const sessionSales = currentSession?.sid
+    ? hist.filter(h => h.sessionId === currentSession.sid)
+    : hist;
+
+  const total = sessionSales.reduce((a,h)=>a+h.g,0);
+  const count = sessionSales.length;
+  const cash  = sessionSales.filter(h=>h.payMode==='cash').reduce((a,h)=>a+h.g,0);
+  const card  = sessionSales.filter(h=>h.payMode==='card').reduce((a,h)=>a+h.g,0);
+  const mob   = sessionSales.filter(h=>h.payMode==='mob').reduce((a,h)=>a+h.g,0);
+  const margin= sessionSales.reduce((a,h)=>a+(h.margin||0),0);
+  const fond  = sessionOpeningFond();
+  const movements = currentSession?.cashMovements || [];
+  const totalCashIn = movements.filter(m=>m.type==='in').reduce((a,m)=>a+m.amount,0);
+  const totalCashOut = movements.filter(m=>m.type==='out').reduce((a,m)=>a+m.amount,0);
+  // opening float + cash sales + pay-ins − pay-outs.
+  // The old formula omitted the pay-ins and subtracted the pay-outs twice,
+  // because confirmCashMovement had already applied both to fondInitial.
+  const theorique = fond + cash + totalCashIn - totalCashOut;
+  const now   = new Date();
+  const bizDate = todayKey();
+
+  const movHtml = movements.length ? movements.map(m=>`
+    <div class="session-row" style="font-size:11px;${m.type==='out'?'color:var(--red);font-weight:700':'color:var(--green)'}">
+      <span>${m.type==='in'?'➕ Ajout':'➖ Retrait'} ${m.reason?'('+m.reason+')':''} · ${m.time}</span>
+      <span style="font-weight:700">${m.type==='in'?'+':'−'}${f(m.amount)} ${CLIENT_CONFIG.currency}</span>
+    </div>`).join('') : '';
+
+  createSessionModal(`
+    <div class="session-title">Clôture de Journée</div>
+    <div style="margin-bottom:16px">
+      <div class="session-row"><span>Ventes</span><span>${count}</span></div>
+      <div class="session-row"><span>Total</span><span>${f(total)} ${CLIENT_CONFIG.currency}</span></div>
+      <div class="session-row"><span>💵 Espèces</span><span>${f(cash)} ${CLIENT_CONFIG.currency}</span></div>
+      <div class="session-row"><span>💳 Carte</span><span>${f(card)} ${CLIENT_CONFIG.currency}</span></div>
+      <div class="session-row"><span>📈 Marge brute</span><span style="color:var(--green)">${f(margin)} ${CLIENT_CONFIG.currency}</span></div>
+      <div class="session-row"><span>💰 Fond initial</span><span>${f(fond)} ${CLIENT_CONFIG.currency}</span></div>
+      ${totalCashIn>0?`<div class="session-row" style="color:var(--green)"><span>➕ Ajouts caisse</span><span>+${f(totalCashIn)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+      ${totalCashOut>0?`<div class="session-row" style="color:var(--red);font-weight:700"><span>➖ Retraits caisse</span><span>−${f(totalCashOut)} ${CLIENT_CONFIG.currency}</span></div>`:''}
+      ${movHtml}
+      <div class="session-row" style="border-top:2px solid var(--gold);margin-top:4px;padding-top:8px">
+        <span>💼 Théorique tiroir</span><span style="color:var(--gold-l);font-weight:700">${f(theorique)} ${CLIENT_CONFIG.currency}</span>
+      </div>
+    </div>
+    <div class="session-input-row">
+      <label>Montant compté dans le tiroir (${CLIENT_CONFIG.currency})</label>
+      <input class="session-inp" type="number" id="compte-inp" placeholder="0.000"
+        step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <div id="ecart-display" style="display:none;padding:12px;border-radius:8px;margin-bottom:12px;font-size:18px;font-weight:700;text-align:center"></div>
+    <button class="btn-session-close" onclick="confirmerCloture(${total},${count},${cash},${card},${mob},${theorique},'${bizDate}','${now.toLocaleTimeString('fr-TN')}')">
+      ✓ Confirmer la clôture
+    </button>
+    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Annuler</button>
+  `);
+  setTimeout(()=>{
+    const i=document.getElementById('compte-inp'); if(i)i.focus();
+    document.getElementById('compte-inp')?.addEventListener('input', function(){
+      const compte = parseFloat(this.value)||0;
+      const ecart  = compte - theorique;
+      const el = document.getElementById('ecart-display');
+      if(this.value !== ''){
+        el.style.display = '';
+        el.style.background = ecart >= 0 ? 'rgba(61,184,122,.15)' : 'rgba(224,82,82,.15)';
+        el.style.color = ecart >= 0 ? 'var(--green)' : 'var(--red)';
+        el.textContent = 'Écart: ' + (ecart >= 0 ? '+' : '') + f(ecart) + ' ' + CLIENT_CONFIG.currency + ' ' + (ecart === 0 ? '✅' : ecart > 0 ? '⬆' : '⚠');
+      } else { el.style.display = 'none'; }
+    });
+  },100);
+}
+
+async function confirmerCloture(total, count, cash, card, mob, theorique, bizDate, closeTime){
+  const montantCompte = parseFloat(document.getElementById('compte-inp')?.value) || 0;
+  const ecart = montantCompte - theorique;
+
+  if(currentSession?.id && window.electronAPI?.closeSession){
+    await window.electronAPI.closeSession(currentSession.id, {
+      closedAt: closeTime, totalSales: total, cashSales: cash,
+      cardSales: card, mobileSales: mob, ordersCount: count,
+      montantCompte, theorique, ecart,
+    });
+  }
+
+  syncCloture({
+    businessDate: bizDate, total, ordersCount: count,
+    cashTotal: cash, cardTotal: card, mobileTotal: mob,
+    fondInitial: currentSession?.fondInitial || 0,
+    montantCompte, theorique, ecart,
+    cashier: USERS[currentUser].name,
+    sessionId: currentSession?.sid || '',
+    openedAtISO: currentSession?.openedAtISO || null,
+    closedAtISO: new Date().toISOString(),
+    cashMovements: currentSession?.cashMovements || [],
+  });
+
+  destroySessionModal();
+  currentSession = null;
+  saveSessionToStorage();
+  document.getElementById('session-badge-hdr').style.display = 'none';
+  daily = 0;
+  localStorage.removeItem(STORE_KEY);
+  document.getElementById('dt').textContent = 'Ventes du jour : 0.000 ' + CLIENT_CONFIG.currency;
+  businessStateReady = null;
+  updateCaisseButton(); updBtn();
+
+  const ecartMsg = ecart === 0 ? '✅ Caisse juste!' : (ecart > 0 ? `⬆ Excédent: +${f(ecart)} ${CLIENT_CONFIG.currency}` : `⚠ Manque: ${f(ecart)} ${CLIENT_CONFIG.currency}`);
+  flash('🔒 Caisse clôturée — ' + ecartMsg);
+}
+
+// ═══════════════ CASH MOVEMENTS ═══════════════
+function showAjoutFond(){
+  if(!currentSession){ flash('Ouvrez la caisse d\'abord'); return; }
+  if(!currentSession.cashMovements) currentSession.cashMovements = [];
+  const totalIn = currentSession.cashMovements.filter(m=>m.type==='in').reduce((a,m)=>a+m.amount,0);
+  const totalOut = currentSession.cashMovements.filter(m=>m.type==='out').reduce((a,m)=>a+m.amount,0);
+  const movRows = currentSession.cashMovements.length ? currentSession.cashMovements.map(m=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--div);font-size:12px;">
+      <span style="color:${m.type==='in'?'var(--green)':'var(--red)'};font-weight:700">${m.type==='in'?'➕':'➖'} ${f2(m.amount)} ${CLIENT_CONFIG.currency}</span>
+      <span style="color:var(--muted);font-size:10px">${m.reason||'—'}</span>
+      <span style="color:var(--muted);font-size:10px">${m.time}</span>
+    </div>`).join('') : '<div style="text-align:center;color:var(--muted);font-size:11px;padding:8px">Aucun mouvement</div>';
+  createSessionModal(`
+    <div class="session-icon">💰</div>
+    <div class="session-title">Mouvements de caisse</div>
+    <div class="session-sub">Fond initial: <strong>${f2(currentSession.fondInitial)} ${CLIENT_CONFIG.currency}</strong> · Ajouts: <strong style="color:var(--green)">+${f2(totalIn)}</strong> · Retraits: <strong style="color:var(--red)">-${f2(totalOut)}</strong></div>
+    <div style="max-height:150px;overflow-y:auto;margin-bottom:14px;border:1px solid var(--div);border-radius:8px;padding:8px;">${movRows}</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-session-open" onclick="showCashIn()" style="flex:1;padding:12px;font-size:13px;">➕ Ajout</button>
+      <button class="btn-session-close" onclick="showCashOut()" style="flex:1;padding:12px;font-size:13px;">➖ Retrait</button>
+    </div>
+    <button class="mcancel" style="margin-top:10px" onclick="destroySessionModal()">Fermer</button>
+  `);
+}
+function showCashIn(){
+  createSessionModal(`
+    <div class="session-icon">➕</div>
+    <div class="session-title">Ajout de fond</div>
+    <div class="session-input-row">
+      <label>Montant (${CLIENT_CONFIG.currency})</label>
+      <input class="session-inp" type="number" id="cash-mov-amount" placeholder="0.000" step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <div class="session-input-row">
+      <label>Raison (optionnel)</label>
+      <input class="session-inp" type="text" id="cash-mov-reason" placeholder="Ex: appoint monnaie" style="font-size:14px;" autocomplete="off">
+    </div>
+    <button class="btn-session-open" onclick="confirmCashMovement('in')" style="margin-top:8px">✓ Confirmer l'ajout</button>
+    <button class="mcancel" style="margin-top:8px" onclick="showAjoutFond()">← Retour</button>
+  `);
+  setTimeout(()=>{const i=document.getElementById('cash-mov-amount');if(i)i.focus();},100);
+}
+function showCashOut(){
+  createSessionModal(`
+    <div class="session-icon">➖</div>
+    <div class="session-title">Retrait de caisse</div>
+    <div class="session-input-row">
+      <label>Montant (${CLIENT_CONFIG.currency})</label>
+      <input class="session-inp" type="number" id="cash-mov-amount" placeholder="0.000" step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
+    </div>
+    <div class="session-input-row">
+      <label>Raison (optionnel)</label>
+      <input class="session-inp" type="text" id="cash-mov-reason" placeholder="Ex: achat fournitures, drop safe" style="font-size:14px;" autocomplete="off">
+    </div>
+    <button class="btn-session-close" onclick="confirmCashMovement('out')" style="margin-top:8px">✓ Confirmer le retrait</button>
+    <button class="mcancel" style="margin-top:8px" onclick="showAjoutFond()">← Retour</button>
+  `);
+  setTimeout(()=>{const i=document.getElementById('cash-mov-amount');if(i)i.focus();},100);
+}
+function confirmCashMovement(type){
+  const amount = parseFloat(document.getElementById('cash-mov-amount')?.value) || 0;
+  const reason = document.getElementById('cash-mov-reason')?.value?.trim() || '';
+  if(amount <= 0){ flash('Montant invalide'); return; }
+  if(!currentSession.cashMovements) currentSession.cashMovements = [];
+  const now = new Date();
+  currentSession.cashMovements.push({ type, amount, reason, time: now.toLocaleTimeString('fr-TN'), by: USERS[currentUser]?.name || '' });
+  // The opening float is a historical fact — never mutate it. The théorique is
+  // derived at clôture from fondOpening + cash sales + pay-ins − pay-outs.
+  if(typeof currentSession.fondOpening !== 'number') currentSession.fondOpening = +currentSession.fondInitial || 0;
+  saveSessionToStorage();
+  // Real cash moves in both directions, so the drawer opens for both.
+  openDrawer(type === 'in' ? 'pay_in' : 'pay_out', amount, reason);
+  destroySessionModal();
+  const label = type==='in' ? '➕ Ajout' : '➖ Retrait';
+  flash(label + ' ' + f2(amount) + ' ' + CLIENT_CONFIG.currency + (reason?' ('+reason+')':''));
+  showAjoutFond();
+}
+
+// ═══════════════ PRODUCT PHOTO UPLOAD ═══════════════
+function uploadItemPhoto(catKey, itemId){
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/jpeg,image/png,image/webp';
+  inp.onchange = function(){
+    const file = inp.files[0];
+    if(!file) return;
+    if(file.size > 5*1024*1024){ alert('Image trop grande (max 5 MB)'); return; }
+    const reader = new FileReader();
+    reader.onload = function(){
+      const img = new Image();
+      img.onload = function(){
+        const canvas = document.createElement('canvas');
+        const size = 128;
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const s = Math.min(img.width, img.height);
+        const sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+        ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        const it = MENU[catKey]?.items.find(x=>x.id===itemId);
+        if(it){
+          it.img = dataUrl;
+          saveMenuToStorage();
+          renderMenuManage();
+          if(cat===catKey) buildGrid();
+          flash('✓ Photo ajoutée');
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+function removeItemPhoto(catKey, itemId){
+  const it = MENU[catKey]?.items.find(x=>x.id===itemId);
+  if(it){ delete it.img; saveMenuToStorage(); renderMenuManage(); if(cat===catKey) buildGrid(); flash('✓ Photo supprimée'); }
+}
+
+// ═══════════════ USER MANAGEMENT ═══════════════
+const USERS_KEY = 'servio-users-v1';
+
+function loadUsersFromStorage(){
+  try{
+    const raw = localStorage.getItem(USERS_KEY);
+    if(raw) { const saved = JSON.parse(raw); if(saved && typeof saved === 'object' && Object.keys(saved).length) return saved; }
+  }catch(e){}
+  return null;
+}
+function saveUsersToStorage(){ localStorage.setItem(USERS_KEY, JSON.stringify(USERS)); }
+function initUsers(){
+  const saved = loadUsersFromStorage();
+  if(saved){
+    Object.keys(saved).forEach(k => { USERS[k] = saved[k]; });
+    Object.keys(USERS).forEach(k => { if(!saved[k]) delete USERS[k]; });
+  }
+}
+initUsers();
+
+function showUserManager(){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
+  renderUserManager();
+}
+function renderUserManager(){
+  const userList = Object.entries(USERS).map(([id, u]) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--div);">
+      <div style="width:36px;height:36px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${u.name.charAt(0)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${u.name}</div>
+        <div style="font-size:10px;color:var(--muted);">${u.role} · PIN: ••••</div>
+      </div>
+      <button onclick="editUser('${id}')" style="padding:4px 10px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);cursor:pointer;font-size:11px;">✏️</button>
+      ${id !== 'manager' ? `<button onclick="deleteUser('${id}')" style="padding:4px 10px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);cursor:pointer;font-size:11px;">✕</button>` : ''}
+    </div>
+  `).join('');
+  createSessionModal(`
+    <div class="session-icon">👥</div>
+    <div class="session-title">Gestion des Utilisateurs</div>
+    <div style="max-height:250px;overflow-y:auto;margin-bottom:14px;">${userList}</div>
+    <div style="border-top:1px solid var(--div);padding-top:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;">AJOUTER UN UTILISATEUR</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="new-user-name" placeholder="Nom" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;" autocomplete="off">
+        <input id="new-user-pin" placeholder="PIN (4 chiffres)" maxlength="6" inputmode="numeric" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;text-align:center;" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <select id="new-user-role" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;">
+          <option value="Caissier">Caissier</option>
+          <option value="Manager">Manager</option>
+        </select>
+        <button onclick="addUser()" style="padding:8px 16px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#060810;font-size:12px;font-weight:700;cursor:pointer;">+ Ajouter</button>
+      </div>
+    </div>
+    <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
+  `);
+}
+function addUser(){
+  const name = (document.getElementById('new-user-name')?.value||'').trim();
+  const pin = (document.getElementById('new-user-pin')?.value||'').trim();
+  const role = document.getElementById('new-user-role')?.value||'Caissier';
+  if(!name){ alert('Nom requis'); return; }
+  if(!/^\d{4,6}$/.test(pin)){ alert('PIN invalide — 4 à 6 chiffres'); return; }
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g,'_');
+  if(USERS[id]){ alert('Cet utilisateur existe déjà'); return; }
+  const isManager = role === 'Manager';
+  USERS[id] = { pin, name, role, color: isManager?'var(--gold-l)':'var(--blue)', bg:'rgba(74,144,217,.2)', letter: name.charAt(0), isManager };
+  saveUsersToStorage(); renderUserManager();
+  flash('✓ ' + name + ' ajouté');
+}
+function editUser(id){
+  const u = USERS[id]; if(!u) return;
+  destroySessionModal();
+  createSessionModal(`
+    <div class="session-icon">✏️</div>
+    <div class="session-title">Modifier ${u.name}</div>
+    <div class="session-input-row">
+      <label>Nom</label>
+      <input class="session-inp" type="text" id="edit-user-name" value="${u.name}" autocomplete="off" style="font-size:16px;">
+    </div>
+    <div class="session-input-row">
+      <label>PIN (4-6 chiffres)</label>
+      <input class="session-inp" type="text" id="edit-user-pin" value="${u.pin}" maxlength="6" inputmode="numeric" autocomplete="off" style="font-size:16px;">
+    </div>
+    <button class="btn-session-open" onclick="confirmEditUser('${id}')" style="margin-top:8px">✓ Enregistrer</button>
+    <button class="mcancel" style="margin-top:8px" onclick="cancelEditUser()">Annuler</button>
+  `);
+  setTimeout(()=>{const i=document.getElementById('edit-user-name');if(i)i.focus();},100);
+}
+function confirmEditUser(id){
+  const newName = document.getElementById('edit-user-name')?.value?.trim();
+  const newPin = document.getElementById('edit-user-pin')?.value?.trim();
+  if(!newName){ flash('Nom requis'); return; }
+  if(!/^\d{4,6}$/.test(newPin||'')){ flash('PIN invalide — 4 à 6 chiffres'); return; }
+  USERS[id].name = newName;
+  USERS[id].pin = newPin;
+  USERS[id].letter = newName.charAt(0);
+  saveUsersToStorage();
+  destroySessionModal();
+  showUserManager();
+  flash('✓ ' + newName + ' modifié');
+}
+function cancelEditUser(){
+  destroySessionModal();
+  showUserManager();
+}
+function deleteUser(id){
+  if(!USERS[id]) return;
+  if(!confirm('Supprimer ' + USERS[id].name + ' ?')) return;
+  delete USERS[id]; saveUsersToStorage(); renderUserManager();
+  flash('✓ Utilisateur supprimé');
+}
+
+// ═══════════════ PRINTER CONFIG (receipt only — no kitchen zones in retail) ═══════════════
+// Retail has nothing to cook, so there is only ever one printer to manage:
+// the till/receipt printer. Same pattern as the café/restaurant builds' zone
+// printer config, minus the zones.
+let _lastPrinterNames = [];
+async function showPrinterConfig(){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
+  let printers = [];
+  try{ printers = window.electronAPI?.listPrinters ? await window.electronAPI.listPrinters() : []; }catch(e){}
+  let cfg = {};
+  try{ cfg = window.electronAPI?.getHwConfig ? await window.electronAPI.getHwConfig() : {}; }catch(e){}
+  const names = printers.map(p => p.name);
+  _lastPrinterNames = names;
+  const current = cfg.receiptPrinter || '';
+  const opts = `<option value="">Auto / détection automatique</option>` +
+    printers.map(p => `<option value="${p.name}" ${current===p.name?'selected':''}>${p.displayName}${p.isDefault?' (par défaut)':''}</option>`).join('');
+  const status = (val) => {
+    if(!val) return '';
+    const known = names.includes(val);
+    return `<div style="font-size:10px;margin-top:3px;color:${known?'var(--green)':'var(--red)'}">${known?'✅ Détectée':'⚠️ Introuvable — reconnectez ou re-sélectionnez'}</div>`;
+  };
+  createSessionModal(`
+    <div class="session-icon" style="font-size:30px;margin-bottom:4px;">🖨️</div>
+    <div class="session-title" style="font-size:16px;margin-bottom:4px;">Imprimante ticket</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;text-align:center;">
+      ${printers.length ? printers.length+' imprimante(s) Windows détectée(s).' : 'Aucune imprimante Windows détectée — vérifiez les branchements.'}
+    </div>
+    <div class="session-input-row" style="margin-bottom:8px;">
+      <label style="font-size:11px;">🧾 Ticket de caisse</label>
+      <div style="display:flex;gap:6px;align-items:flex-start;">
+        <select id="pr-receiptPrinter" class="session-inp" style="flex:1;font-size:13px;padding:8px 10px;" onchange="updatePrinterStatus('receiptPrinter')">${opts}</select>
+        <button type="button" onclick="testReceiptPrinter()" style="flex:0 0 auto;padding:8px 10px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:var(--txt);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🖨️ Test</button>
+      </div>
+      <div id="pr-status-receiptPrinter">${status(current)}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button class="mcancel" style="flex:1;margin:0;padding:10px;" onclick="destroySessionModal()">Annuler</button>
+      <button class="btn-session-open" style="flex:1;margin:0;padding:10px;" onclick="confirmPrinterConfig()">✓ Enregistrer</button>
+    </div>
+  `);
+}
+function updatePrinterStatus(key){
+  const sel = document.getElementById('pr-'+key);
+  const el = document.getElementById('pr-status-'+key);
+  if(!sel || !el) return;
+  const current = sel.value;
+  if(!current){ el.innerHTML = ''; return; }
+  const known = _lastPrinterNames.includes(current);
+  el.innerHTML = `<div style="font-size:10px;margin-top:3px;color:${known?'var(--green)':'var(--red)'}">${known?'✅ Détectée':'⚠️ Introuvable — reconnectez ou re-sélectionnez'}</div>`;
+}
+function testReceiptPrinter(){
+  if(!window.electronAPI?.printReceipt){ flash('⚠ Impression indisponible ici'); return; }
+  const now = new Date();
+  const html = `<html><body style="font-family:monospace;padding:8px;font-size:12px;text-align:center">
+    <div style="font-size:16px;margin-bottom:4px">🖨️</div>
+    <div style="font-weight:700">TEST D'IMPRESSION</div>
+    <div style="margin:4px 0">Ticket de caisse</div>
+    <div style="font-size:10px;color:#666">${now.toLocaleDateString('fr-TN')} ${now.toLocaleTimeString('fr-TN')}</div>
+    <div style="border-top:1px dashed #999;margin-top:8px;padding-top:8px;font-size:10px">Si ce ticket sort, l'imprimante est correctement branchée.</div>
+  </body></html>`;
+  window.electronAPI.printReceipt(html);
+  flash('✓ Test envoyé — vérifiez que le ticket sort de l\'imprimante');
+}
+async function confirmPrinterConfig(){
+  const el = document.getElementById('pr-receiptPrinter');
+  const partial = { receiptPrinter: el ? (el.value || '') : '' };
+  try{
+    const res = window.electronAPI?.saveHwConfig ? await window.electronAPI.saveHwConfig(partial) : null;
+    destroySessionModal();
+    flash(res && res.ok ? '✓ Imprimante enregistrée' : '⚠ Échec de l\'enregistrement');
+  }catch(e){
+    flash('⚠ Échec de l\'enregistrement');
+  }
+}
+
+function showHistorique(){
+  // Show ONLY sales from the CURRENT caisse session
+  const sessionSales = currentSession?.sid
+    ? hist.filter(h => h.sessionId === currentSession.sid)
+    : [];
+  if(!sessionSales.length){
+    createSessionModal(`
+      <div class="session-icon">📋</div>
+      <div class="session-title">Historique de session</div>
+      <div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Aucune vente dans cette session.</div>
+      <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
+    `);
+    return;
+  }
+  const pm={cash:'💵',card:'💳',mob:'📱',credit:'📒'};
+  const total=sessionSales.reduce((a,h)=>a+h.g,0);
+  const rows=[...sessionSales].reverse().map(h=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--div);font-size:12px;">
+      <span style="color:var(--muted);width:45px">#${String(h.num).padStart(3,'0')}</span>
+      <span style="width:55px">${h.time}</span>
+      <span style="width:55px;font-size:10px;color:var(--muted)">${h.cashier||'—'}</span>
+      <span style="flex:1;text-align:right;font-weight:700;color:var(--gold-l)">${f(h.g)} ${CLIENT_CONFIG.currency}</span>
+      <span style="width:25px;text-align:right">${pm[h.payMode]||'💵'}</span>
+    </div>`).join('');
+  createSessionModal(`
+    <div class="session-icon">📋</div>
+    <div class="session-title">Historique de session</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px;">${sessionSales.length} ventes · Total: ${f(total)} ${CLIENT_CONFIG.currency}</div>
+    <div style="max-height:350px;overflow-y:auto;">${rows}</div>
+    <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
+  `);
+}
+
+// ═══════════════ UTILS ═══════════════
+function f(n){return Number(n).toFixed(3);}
+function flash(m){const el=document.getElementById('stm');if(el){el.textContent=m;setTimeout(()=>{el.textContent='✓ Prêt';},2500);}}
+
+// ═══════════════ REMOTE LICENSE CHECK ═══════════════
+const CHECK_URL = SYNC_API_URL.replace('/api/sync', '/api/check');
+let licenseOk = true;
+
+async function checkLicense(){
+  if(!SYNC_ENABLED) return;
+  try {
+    const res  = await fetch(CHECK_URL + '?key=' + SYNC_API_KEY, { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+
+    if(data.config){
+      const cfg = data.config;
+      if(cfg.restaurantName){ const ln=document.querySelector('.logo-name'); if(ln)ln.textContent=cfg.restaurantName; }
+      if(cfg.logo){ const ll=document.querySelector('.login-logo'); if(ll)ll.textContent=cfg.logo; }
+      if(cfg.restaurantCity) CLIENT_CONFIG.city = cfg.restaurantCity;
+      if(cfg.phone) CLIENT_CONFIG.phone=cfg.phone;
+    }
+
+    if(data.ok && data.active === false){
+      licenseOk = false;
+      document.getElementById('remote-lock-msg').textContent = data.message || 'Contactez le développeur.';
+      document.getElementById('remote-lock').classList.add('active');
+      document.getElementById('login-screen').style.display  = 'none';
+      document.getElementById('hdr').style.display           = 'none';
+      document.getElementById('main').style.display          = 'none';
+    } else if(data.active === true && !licenseOk){
+      licenseOk = true;
+      location.reload();
+    }
+  } catch(e) { /* No internet — don't block */ }
+}
+setTimeout(checkLicense, 10000);
+setInterval(checkLicense, 30 * 60 * 1000);
+
+// ═══════════════ THEME TOGGLE ═══════════════
+const THEME_KEY='retail-theme-v1';
+function applyTheme(t){
+  document.body.classList.toggle('light', t==='light');
+  const btn=document.getElementById('btn-theme');
+  if(btn) btn.textContent = t==='light' ? '🌙' : '☀️';
+}
+function toggleTheme(){
+  const isLight=document.body.classList.contains('light');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+}
+applyTheme(localStorage.getItem(THEME_KEY)||'dark');
+
+function toggleHdrMenu(e){
+  if(e) e.stopPropagation();
+  document.getElementById('hdr-menu')?.classList.toggle('open');
+}
+function closeHdrMenu(){
+  document.getElementById('hdr-menu')?.classList.remove('open');
+}
+document.addEventListener('click', function(e){ if(!e.target.closest('.hdr-menu-wrap')) closeHdrMenu(); });
+
+// ── Apply CLIENT_CONFIG to DOM ─────────────────────────
+(function applyConfig(){
+  document.title = CLIENT_CONFIG.name + ' POS Pro — by Servio ⚡';
+  const loginLogo  = document.getElementById('login-logo');
+  const loginBrand = document.getElementById('login-brand');
+  const loginSub   = document.getElementById('login-sub');
+  if(loginLogo)  loginLogo.textContent  = CLIENT_CONFIG.logo;
+  if(loginBrand) loginBrand.textContent = CLIENT_CONFIG.name;
+  if(loginSub)   loginSub.textContent   = CLIENT_CONFIG.tagline + ' — POS Pro';
+  const hdrLetter = document.getElementById('hdr-logo-letter');
+  const hdrName   = document.getElementById('hdr-logo-name');
+  if(hdrLetter) hdrLetter.textContent = CLIENT_CONFIG.logoLetter;
+  if(hdrName)   hdrName.textContent   = CLIENT_CONFIG.name;
+  const managerCard = document.getElementById('login-manager-name');
+  const cashierCard = document.getElementById('login-cashier-name');
+  if(managerCard) managerCard.textContent = CLIENT_CONFIG.managerName;
+  if(cashierCard) cashierCard.textContent = CLIENT_CONFIG.cashierName;
+})();
+
+// ═══════════════ INPUT FOCUS FIX (Electron) ═══════════════
+document.addEventListener('mousedown', function(e){
+  const target = e.target;
+  if(target && (target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.tagName==='SELECT')){
+    setTimeout(()=>{ target.focus(); }, 0);
+    setTimeout(()=>{ target.focus(); }, 50);
+  }
+}, true);
+
+// ═══════════════ KEYBOARD PIN INPUT ═══════════════
+document.addEventListener('keydown', function(e){
+  const pinWrap = document.getElementById('pin-wrap');
+  if(!pinWrap || pinWrap.style.display === 'none') return;
+  if(e.target.closest('input,textarea,select')) return;
+  if(e.key >= '0' && e.key <= '9'){
+    e.preventDefault();
+    pinKey(e.key);
+  } else if(e.key === 'Backspace'){
+    e.preventDefault();
+    pinDel();
+  } else if(e.key === 'Escape'){
+    e.preventDefault();
+    backToUsers();
+  }
+});
+
+// ═══════════════ RIPPLE ═══════════════
+document.addEventListener('pointerdown',function(e){
+  if(e.target.closest('#login-screen')) return;
+  if(e.target.closest('input,textarea,select')) return;
+  const t=e.target.closest('.pc,.hdr-btn,.enc,.pb,.db,.btn-ok,.btn-print,.btn-new');
+  if(!t)return;
+  if(getComputedStyle(t).position==='static'){ t.style.position='relative'; }
+  t.style.overflow='hidden';
+  const rect=t.getBoundingClientRect();
+  const size=Math.max(rect.width,rect.height);
+  const r=document.createElement('span');
+  r.className='ripple-el';
+  r.style.width=r.style.height=size+'px';
+  r.style.left=(e.clientX-rect.left-size/2)+'px';
+  r.style.top=(e.clientY-rect.top-size/2)+'px';
+  t.appendChild(r);
+  setTimeout(()=>r.remove(),600);
+});
+</script>
+</body>
+</html>

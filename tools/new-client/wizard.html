@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>⚡ Servio — Nouveau client</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0b0c0f; --card:#15171c; --surface:#1b1e25; --div:#262a33;
+    --txt:#f1f2f4; --muted:#8b90a0; --gold:#d6943a; --gold-l:#e8b370;
+    --green:#3fae6a; --red:#e05252; --r:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:28px 20px 80px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px;}
+  .steps{display:flex;gap:6px;margin-bottom:24px;}
+  .step-dot{flex:1;height:4px;border-radius:2px;background:var(--div);}
+  .step-dot.on{background:var(--gold);}
+  .panel{display:none;}
+  .panel.on{display:block;}
+  .card{background:var(--card);border:1px solid var(--div);border-radius:var(--r);padding:18px;margin-bottom:14px;}
+  .card h2{font-size:15px;margin:0 0 4px;}
+  .card .desc{color:var(--muted);font-size:12px;margin-bottom:14px;}
+  label{display:block;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;}
+  input[type=text],input[type=number],input[type=tel],select,textarea{
+    width:100%;background:var(--surface);border:1px solid var(--div);border-radius:8px;color:var(--txt);
+    padding:10px 12px;font-size:13px;margin-bottom:12px;font-family:inherit;
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+  .row{display:flex;gap:12px;}
+  .row > div{flex:1;}
+  .base-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+  .base-card{background:var(--surface);border:2px solid var(--div);border-radius:var(--r);padding:16px 12px;cursor:pointer;text-align:center;transition:border-color .12s;}
+  .base-card:hover{border-color:var(--gold-l);}
+  .base-card.on{border-color:var(--gold);background:rgba(214,148,58,.08);}
+  .base-card .ic{font-size:30px;margin-bottom:8px;}
+  .base-card .lbl{font-weight:700;font-size:13px;margin-bottom:4px;}
+  .base-card .hint{font-size:11px;color:var(--muted);line-height:1.4;}
+  .cat-block{background:var(--surface);border:1px solid var(--div);border-radius:var(--r);padding:14px;margin-bottom:12px;}
+  .cat-hdr{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+  .cat-hdr input{margin:0;}
+  .item-row{display:grid;grid-template-columns:1fr 60px 90px auto;gap:8px;margin-bottom:8px;align-items:center;}
+  .item-row.retail{grid-template-columns:1fr 60px 90px 110px 80px 80px auto;}
+  .btn{background:var(--gold);color:#080604;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;}
+  .btn:hover{background:var(--gold-l);}
+  .btn.ghost{background:var(--surface);color:var(--txt);border:1px solid var(--div);}
+  .btn.danger{background:none;color:var(--red);border:1px solid var(--red);padding:6px 10px;font-size:11px;}
+  .btn.small{padding:6px 10px;font-size:11px;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .nav{display:flex;justify-content:space-between;margin-top:20px;}
+  .zone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
+  .zone-col{background:var(--surface);border:1px solid var(--div);border-radius:var(--r);padding:12px;}
+  .zone-col h3{font-size:12px;margin:0 0 8px;color:var(--gold-l);}
+  .zone-col label.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt);text-transform:none;font-weight:500;margin-bottom:6px;cursor:pointer;}
+  .zone-col input[type=checkbox]{width:auto;margin:0;accent-color:var(--gold);}
+  .msg{padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px;}
+  .msg.err{background:rgba(224,82,82,.12);color:var(--red);border:1px solid rgba(224,82,82,.3);}
+  .msg.ok{background:rgba(63,174,106,.12);color:var(--green);border:1px solid rgba(63,174,106,.3);}
+  .review pre{background:var(--surface);border:1px solid var(--div);border-radius:8px;padding:12px;font-size:11px;overflow:auto;max-height:300px;}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#080604;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚡ Servio — Nouveau client</h1>
+  <div class="sub">Créez un nouveau POS complet en quelques minutes, à partir d'une base existante.</div>
+
+  <div class="steps">
+    <div class="step-dot on" data-dot="0"></div>
+    <div class="step-dot" data-dot="1"></div>
+    <div class="step-dot" data-dot="2"></div>
+    <div class="step-dot" data-dot="3"></div>
+    <div class="step-dot" data-dot="4"></div>
+    <div class="step-dot" data-dot="5"></div>
+  </div>
+
+  <!-- STEP 0 — BASE TYPE -->
+  <div class="panel on" data-panel="0">
+    <div class="card">
+      <h2>1. Type de commerce</h2>
+      <div class="desc">Chaque type charge la base de code adaptée (impression cuisine, stock, scan code-barres...) et, pour le commerce, un catalogue de départ à modifier.</div>
+      <div class="base-grid" id="base-grid"></div>
+    </div>
+  </div>
+
+  <!-- STEP 1 — IDENTITY -->
+  <div class="panel" data-panel="1">
+    <div class="card">
+      <h2>2. Identité du client</h2>
+      <div class="row">
+        <div><label>Nom du commerce</label><input type="text" id="f-name" placeholder="Ex: LE BON GOÛT"></div>
+        <div><label>Slogan</label><input type="text" id="f-tagline" placeholder="Ex: Restaurant & Fast Food"></div>
+      </div>
+      <div class="row">
+        <div><label>Logo (emoji)</label><input type="text" id="f-logo" placeholder="🍔" maxlength="4"></div>
+        <div><label>Ville</label><input type="text" id="f-city" placeholder="Tunis, Tunisie"></div>
+        <div><label>Téléphone</label><input type="tel" id="f-phone" placeholder="+216 XX XXX XXX"></div>
+      </div>
+      <div class="row">
+        <div><label>Clé de synchronisation (unique)</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="f-synckey" style="flex:1">
+            <button type="button" class="btn ghost small" style="margin-bottom:12px" onclick="genSyncKey()">🎲 Générer</button>
+          </div>
+        </div>
+        <div><label>Devise</label><input type="text" id="f-currency" value="DT"></div>
+      </div>
+      <div class="row">
+        <div><label>Email dashboard web (connexion)</label><input type="text" id="f-email"></div>
+        <div><label>Mot de passe dashboard web</label><input type="text" id="f-webpass"></div>
+      </div>
+      <div class="row">
+        <div><label>Nom Manager</label><input type="text" id="f-mgrname" value="Manager"></div>
+        <div><label>PIN Manager</label><input type="text" id="f-mgrpin" value="1234" maxlength="6"></div>
+        <div><label>Nom Caissier</label><input type="text" id="f-cshname" value="Caissier"></div>
+        <div><label>PIN Caissier</label><input type="text" id="f-cshpin" value="0000" maxlength="6"></div>
+      </div>
+      <div id="retail-only" class="row" style="display:none">
+        <div><label>Seuil d'alerte stock bas</label><input type="number" id="f-threshold" value="5"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 — FEATURES -->
+  <div class="panel" data-panel="2">
+    <div class="card">
+      <h2>3. Fonctionnalités &amp; moyens de paiement</h2>
+      <div class="desc">Activez uniquement ce dont ce client a besoin — tout le reste reste dans le code (désactivable plus tard) mais n'apparaît pas à la caisse.</div>
+      <div id="features-area"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 — MENU -->
+  <div class="panel" data-panel="3">
+    <div class="card">
+      <h2>4. Menu / Catalogue</h2>
+      <div class="desc">
+        Il n'y a pas de lecture automatique de PDF/photo intégrée à cet outil (pas d'IA branchée ici).
+        En revanche : envoyez le PDF ou la photo du menu à Claude dans la conversation — il peut lire l'image/PDF
+        et vous générer directement le JSON ci-dessous, prêt à coller. Sinon, ajoutez les catégories à la main.
+      </div>
+      <div id="preset-area"></div>
+      <details style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--gold-l);font-weight:700;margin-bottom:8px">📋 Importer un menu (coller le JSON généré par Claude)</summary>
+        <textarea id="json-import" rows="6" placeholder='[{"name":"Pizza","icon":"🍕","tracked":false,"items":[{"name":"Margherita","emoji":"🍕","price":9}]}]' style="margin-top:8px;font-family:monospace;font-size:11px"></textarea>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn ghost small" onclick="importJson(false)">Ajouter à la liste</button>
+          <button class="btn ghost small" onclick="importJson(true)">Remplacer la liste</button>
+        </div>
+        <div id="import-msg"></div>
+      </details>
+      <div id="cats"></div>
+      <button class="btn ghost" onclick="addCategory()">+ Ajouter une catégorie</button>
+    </div>
+  </div>
+
+  <!-- STEP 4 — ZONES -->
+  <div class="panel" data-panel="4">
+    <div class="card">
+      <h2>5. Zones de cuisine (impression)</h2>
+      <div class="desc">Assignez chaque catégorie à une zone d'impression. Une zone = une imprimante physique possible. Choisissez "1 seule zone" pour un ticket cuisine unique, sans répartition.</div>
+      <div id="zone-count-row" style="margin-bottom:14px"></div>
+      <div id="zones-area"></div>
+    </div>
+  </div>
+
+  <!-- STEP 5 — REVIEW -->
+  <div class="panel" data-panel="5">
+    <div class="card review">
+      <h2>6. Vérification &amp; création</h2>
+      <div id="review-out"></div>
+      <div id="create-msg"></div>
+      <button class="btn" id="btn-create" onclick="createClient()">✓ Créer le client</button>
+      <div id="post-create" style="display:none;margin-top:16px;">
+        <div class="msg ok" id="created-msg"></div>
+        <button class="btn" id="btn-build" onclick="buildClient()">🔨 Construire l'EXE maintenant (2-5 min)</button>
+        <div id="build-out" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="btn ghost" id="btn-prev" onclick="go(-1)">← Précédent</button>
+    <button class="btn" id="btn-next" onclick="go(1)">Suivant →</button>
+  </div>
+</div>
+
+<script>
+let step = 0;
+let baseKey = null;
+let bases = {};
+let categories = []; // {name, icon, tracked, items:[{name,emoji,price,barcode,cost,qty}]}
+
+// Verticals are the actual onboarding choices (like Caissa.tn's POS-type
+// grid) — each maps to one of the 3 real code bases plus, for retail
+// verticals, a matching starter product catalog (PRESET_TEMPLATES below).
+// Table/counter verticals have no product preset: a real menu is too
+// client-specific to template generically — that's what the Menu step
+// (manual entry / paste-from-Claude JSON) is for.
+const VERTICALS = [
+  { key:'alimentaire', label:'Épicerie / Dépanneur', desc:'Petit commerce de proximité — alimentaire, snacks, tabac, dépannage.', icon:'🏪', base:'retail', preset:'alimentaire' },
+  { key:'para',         label:'Parapharmacie',        desc:'Produits de santé/beauté sans ordonnance.',                          icon:'💊', base:'retail', preset:'para' },
+  { key:'parfumerie',   label:'Parfumerie',           desc:'Parfums, cosmétiques et soins.',                                     icon:'💄', base:'retail', preset:'parfumerie' },
+  { key:'animalerie',   label:'Animalerie',           desc:'Alimentation et accessoires pour animaux.',                          icon:'🐾', base:'retail', preset:'animalerie' },
+  { key:'fromagerie',   label:'Fromagerie / Crèmerie',desc:'Produits laitiers et fromages.',                                     icon:'🧀', base:'retail', preset:'fromagerie' },
+  { key:'restaurant',   label:'Café - Restaurant',    desc:'Service à table, addition par table, split de l\'addition.',        icon:'🍽️', base:'table', preset:null },
+  { key:'cafe',         label:'Café / Salon de thé',  desc:'Boissons au comptoir, sans plan de salle.',                          icon:'☕', base:'counter', preset:null },
+  { key:'fastfood',     label:'Fast-food / Comptoir', desc:'Vente directe au comptoir — pizza, sandwichs, plats à emporter.',    icon:'🍔', base:'counter', preset:null },
+  { key:'grossiste',    label:'Grossiste',            desc:'Point de vente en gros, sans cuisine.',                              icon:'📦', base:'retail', preset:null },
+  { key:'autre',        label:'Autre / Vide',         desc:'Choisissez la base manuellement, catalogue vide.',                   icon:'⚙️', base:null, preset:null },
+];
+let selectedVertical = null;
+
+fetch('/api/bases').then(r=>r.json()).then(b=>{
+  bases = b;
+  document.getElementById('base-grid').innerHTML = VERTICALS.map(v=>`
+    <div class="base-card" data-vertical="${v.key}" onclick="selectVertical('${v.key}')">
+      <div class="ic">${v.icon}</div>
+      <div class="lbl">${v.label}</div>
+      <div class="hint">${v.desc}</div>
+    </div>`).join('');
+});
+
+function selectVertical(vk){
+  const v = VERTICALS.find(x=>x.key===vk);
+  if(!v) return;
+  selectedVertical = v;
+  document.querySelectorAll('.base-card').forEach(el=>el.classList.toggle('on', el.dataset.vertical===vk));
+  if(v.base){
+    selectBase(v.base);
+  } else {
+    // "Autre / Vide" — reveal a manual base picker instead of guessing.
+    const manual = prompt('Base à utiliser : "table" (service à table), "counter" (comptoir) ou "retail" (commerce/scan code-barres) ?', 'retail');
+    if(manual && bases[manual.trim()]) selectBase(manual.trim());
+  }
+}
+
+function selectBase(k){
+  baseKey = k;
+  document.getElementById('retail-only').style.display = bases[k]?.retail ? 'flex' : 'none';
+}
+
+// Feature availability differs per base — only offer a toggle when the base
+// actually has that feature wired up (no fabricating buttons that don't exist).
+const FEATURE_DEFS = {
+  card:    { label:'💳 Carte bancaire (TPE)', desc:'Bouton de paiement carte à la caisse.', bases:['table'] },
+  credit:  { label:'📒 Crédit clients', desc:'Vente à crédit + suivi des dettes clients.', bases:['table','counter'] },
+  stock:   { label:'📦 Suivi de stock à l\'unité', desc:'Compter les quantités, alertes de rupture.', bases:['table','counter'] },
+};
+let features = { card:true, credit:true, stock:true };
+function renderFeatures(){
+  const el = document.getElementById('features-area');
+  const rows = [`
+    <label class="chk" style="margin-bottom:10px">
+      <input type="checkbox" checked disabled>
+      💵 Espèces — toujours actif
+    </label>`];
+  for(const [key, def] of Object.entries(FEATURE_DEFS)){
+    if(!def.bases.includes(baseKey)) continue;
+    rows.push(`
+      <label class="chk" style="margin-bottom:10px;display:block">
+        <input type="checkbox" ${features[key]?'checked':''} onchange="features['${key}']=this.checked">
+        ${def.label}
+        <div style="font-size:11px;color:var(--muted);margin-left:24px;font-weight:400">${def.desc}</div>
+      </label>`);
+  }
+  if(rows.length===1){
+    rows.push(`<div style="color:var(--muted);font-size:12px">Ce type de commerce n'a pas d'options supplémentaires — passez à l'étape suivante.</div>`);
+  }
+  el.innerHTML = rows.join('');
+}
+
+function genSyncKey(){
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const hex = [...bytes].map(b=>b.toString(16).padStart(2,'0').toUpperCase()).join('');
+  const sk = document.getElementById('f-synckey');
+  sk.value = `SRVO-${hex.slice(0,4)}-${hex.slice(4,8)}`;
+  sk.dataset.touched = '1';
+}
+function slugifyName(n){
+  return (n||'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,20) || 'CLIENT';
+}
+document.getElementById('f-name').addEventListener('input', e=>{
+  const sk = document.getElementById('f-synckey');
+  if(!sk.dataset.touched) sk.value = 'SRVO-' + slugifyName(e.target.value) + '-001';
+  const emailEl = document.getElementById('f-email');
+  if(!emailEl.dataset.touched){
+    const slug = (e.target.value||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'').slice(0,20) || 'client';
+    emailEl.value = slug + '@servio.tn';
+    const passEl = document.getElementById('f-webpass');
+    if(!passEl.dataset.touched) passEl.value = slug + '123';
+  }
+});
+document.getElementById('f-synckey').addEventListener('input', e=>{ e.target.dataset.touched='1'; });
+document.getElementById('f-email').addEventListener('input', e=>{ e.target.dataset.touched='1'; });
+document.getElementById('f-webpass').addEventListener('input', e=>{ e.target.dataset.touched='1'; });
+
+// Starter catalogs for retail clients — real, well-known Tunisian retail
+// brands with representative current market prices (DT). These are NOT
+// scraped from any single competitor's live database — they're built from
+// general market knowledge, so they're a realistic *starting point* to edit,
+// not guaranteed-exact current prices. Barcodes are left blank on purpose:
+// scan the client's real products to fill those in, don't invent EAN codes.
+const PRESET_TEMPLATES = {
+  para: {
+    label: '💊 Parapharmacie',
+    categories: [
+      { name:'Soins Visage', icon:'🧴', tracked:false, items:[
+        { name:'Bioderma Sensibio H2O 250ml', emoji:'🧴', price:29, cost:20, qty:15 },
+        { name:'La Roche-Posay Effaclar Duo+', emoji:'🧴', price:45, cost:32, qty:10 },
+        { name:'Avène Cicalfate+ 40ml', emoji:'🧴', price:28, cost:19, qty:12 },
+        { name:'Vichy Normaderm', emoji:'🧴', price:38, cost:26, qty:10 },
+      ]},
+      { name:'Soins Corps', icon:'🧼', tracked:false, items:[
+        { name:'Nivea Lait Corporel 400ml', emoji:'🧴', price:14, cost:9, qty:20 },
+        { name:'CeraVe Crème Hydratante 340g', emoji:'🧴', price:55, cost:38, qty:8 },
+        { name:'Uriage Xémose Baume 400ml', emoji:'🧴', price:32, cost:22, qty:10 },
+      ]},
+      { name:'Hygiène', icon:'🪥', tracked:false, items:[
+        { name:'Signal Dentifrice 75ml', emoji:'🪥', price:6, cost:4, qty:30 },
+        { name:'Rexona Déodorant', emoji:'🧴', price:9, cost:6, qty:25 },
+        { name:'Head & Shoulders Shampoing 400ml', emoji:'🧴', price:14, cost:9, qty:20 },
+      ]},
+      { name:'Bébé', icon:'👶', tracked:false, items:[
+        { name:'Pampers Baby-Dry Taille 4 (pack)', emoji:'👶', price:29, cost:21, qty:12 },
+        { name:'Blédina Lait 2e âge 900g', emoji:'🍼', price:24, cost:17, qty:10 },
+        { name:'Mustela Crème Change 100ml', emoji:'🧴', price:22, cost:15, qty:12 },
+      ]},
+      { name:'Compléments', icon:'💊', tracked:false, items:[
+        { name:'Supradyn Energy (30 cp)', emoji:'💊', price:28, cost:19, qty:15 },
+        { name:'Magné B6 (60 cp)', emoji:'💊', price:19, cost:13, qty:15 },
+        { name:'Upsa Vitamine C 1000 (20 cp)', emoji:'💊', price:12, cost:8, qty:20 },
+      ]},
+    ],
+  },
+  alimentaire: {
+    label: '🛒 Alimentation générale',
+    categories: [
+      { name:'Boissons', icon:'🥤', tracked:false, items:[
+        { name:'Coca-Cola 1.5L', emoji:'🥤', price:3.2, cost:2.3, qty:24 },
+        { name:'Boga Cidre 1L', emoji:'🥤', price:2.8, cost:2, qty:24 },
+        { name:'Cristal Eau Minérale 1.5L', emoji:'💧', price:0.9, cost:0.6, qty:48 },
+        { name:'Yes Jus Orange 1L', emoji:'🧃', price:2.5, cost:1.8, qty:20 },
+      ]},
+      { name:'Produits Laitiers', icon:'🥛', tracked:false, items:[
+        { name:'Délice Lait UHT 1L', emoji:'🥛', price:1.95, cost:1.5, qty:30 },
+        { name:'Délice Yaourt Nature (x4)', emoji:'🥛', price:2.4, cost:1.7, qty:20 },
+        { name:'Vitalait Lait 1L', emoji:'🥛', price:1.85, cost:1.4, qty:30 },
+      ]},
+      { name:'Épicerie', icon:'🛒', tracked:false, items:[
+        { name:'Randa Couscous Moyen 1kg', emoji:'🌾', price:3.5, cost:2.6, qty:20 },
+        { name:'Chahia Pâtes 500g', emoji:'🍝', price:1.4, cost:1, qty:30 },
+        { name:'Lilas Huile d\'Olive 1L', emoji:'🫒', price:14, cost:11, qty:15 },
+        { name:'Sucre Cristallisé 1kg', emoji:'🧂', price:2.2, cost:1.7, qty:25 },
+      ]},
+      { name:'Conserves', icon:'🥫', tracked:false, items:[
+        { name:'Concentré de Tomate Randa 400g', emoji:'🥫', price:1.8, cost:1.3, qty:25 },
+        { name:'Thon à l\'Huile Frigumar', emoji:'🐟', price:4.5, cost:3.4, qty:20 },
+        { name:'Harissa Sassi 135g', emoji:'🌶️', price:2, cost:1.4, qty:25 },
+      ]},
+      { name:'Snacks', icon:'🍿', tracked:false, items:[
+        { name:'Chips Chipsy Nature', emoji:'🍟', price:1.2, cost:0.85, qty:30 },
+        { name:'El Mordjene Pâte à Tartiner', emoji:'🍫', price:7, cost:5.2, qty:15 },
+        { name:'Biscuits Bonjour', emoji:'🍪', price:1.5, cost:1.05, qty:25 },
+      ]},
+      { name:'Hygiène', icon:'🧻', tracked:false, items:[
+        { name:'Papier Toilette Zina (pack 6)', emoji:'🧻', price:5, cost:3.6, qty:20 },
+        { name:'Savon Cristal', emoji:'🧼', price:1.3, cost:0.9, qty:30 },
+      ]},
+    ],
+  },
+  parfumerie: {
+    label: '💄 Parfumerie',
+    categories: [
+      { name:'Parfums Femme', icon:'💄', tracked:false, items:[
+        { name:'Yves Rocher Eau de Toilette 50ml', emoji:'💄', price:39, cost:26, qty:10 },
+        { name:'Nabeul Eau de Rose 250ml', emoji:'🌹', price:8, cost:5, qty:20 },
+        { name:'Déodorant Femme Vaporisateur', emoji:'🧴', price:11, cost:7, qty:20 },
+      ]},
+      { name:'Parfums Homme', icon:'🧔', tracked:false, items:[
+        { name:'Adidas Eau de Toilette Homme 100ml', emoji:'🧴', price:24, cost:16, qty:12 },
+        { name:'Déodorant Homme Spray', emoji:'🧴', price:11, cost:7, qty:20 },
+      ]},
+      { name:'Maquillage', icon:'💋', tracked:false, items:[
+        { name:'Rouge à Lèvres', emoji:'💋', price:15, cost:10, qty:15 },
+        { name:'Mascara', emoji:'👁️', price:18, cost:12, qty:15 },
+        { name:'Fond de Teint', emoji:'🧴', price:28, cost:19, qty:10 },
+      ]},
+      { name:'Soins Cheveux', icon:'💇', tracked:false, items:[
+        { name:'Shampoing L\'Oréal 400ml', emoji:'🧴', price:19, cost:13, qty:15 },
+        { name:'Huile d\'Argan Cheveux', emoji:'🧴', price:16, cost:11, qty:12 },
+      ]},
+    ],
+  },
+  animalerie: {
+    label: '🐾 Animalerie',
+    categories: [
+      { name:'Alimentation Chien', icon:'🐕', tracked:false, items:[
+        { name:'Royal Canin Croquettes 3kg', emoji:'🦴', price:45, cost:34, qty:10 },
+        { name:'Pedigree Boîte Pâtée 400g', emoji:'🥫', price:5, cost:3.5, qty:20 },
+      ]},
+      { name:'Alimentation Chat', icon:'🐈', tracked:false, items:[
+        { name:'Whiskas Croquettes 1.5kg', emoji:'🦴', price:22, cost:16, qty:12 },
+        { name:'Whiskas Sachet Fraîcheur', emoji:'🥫', price:2, cost:1.4, qty:30 },
+      ]},
+      { name:'Hygiène & Accessoires', icon:'🧺', tracked:false, items:[
+        { name:'Litière Chat 5L', emoji:'🧺', price:12, cost:8.5, qty:15 },
+        { name:'Laisse Chien', emoji:'🐕‍🦺', price:18, cost:12, qty:10 },
+        { name:'Collier Anti-puces', emoji:'🎗️', price:14, cost:9, qty:10 },
+      ]},
+    ],
+  },
+  fromagerie: {
+    label: '🧀 Fromagerie / Crèmerie',
+    categories: [
+      { name:'Fromages', icon:'🧀', tracked:false, items:[
+        { name:'Vache Qui Rit (16 portions)', emoji:'🧀', price:6.5, cost:4.8, qty:20 },
+        { name:'Fromage Président Tranches', emoji:'🧀', price:9, cost:6.5, qty:15 },
+        { name:'STIL Fromage Fondu', emoji:'🧀', price:5.5, cost:4, qty:15 },
+      ]},
+      { name:'Produits Laitiers', icon:'🥛', tracked:false, items:[
+        { name:'Délice Lait UHT 1L', emoji:'🥛', price:1.95, cost:1.5, qty:25 },
+        { name:'Yaourt Nature Délice (x4)', emoji:'🥛', price:2.4, cost:1.7, qty:20 },
+        { name:'Crème Fraîche Vitalait 200g', emoji:'🥛', price:3.2, cost:2.3, qty:15 },
+      ]},
+      { name:'Charcuterie', icon:'🥓', tracked:false, items:[
+        { name:'Jambon de Dinde Tranches', emoji:'🥓', price:8, cost:5.8, qty:12 },
+        { name:'Escalope de Dinde Fumée', emoji:'🥓', price:9.5, cost:6.8, qty:10 },
+      ]},
+    ],
+  },
+};
+function renderPresets(){
+  const el = document.getElementById('preset-area');
+  if(!bases[baseKey]?.retail){ el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="card" style="background:var(--surface);margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px">🚀 Démarrer avec un modèle</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        Produits réels du marché tunisien, prix indicatifs — à ajuster selon vos fournisseurs. Remplace la liste actuelle.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${Object.entries(PRESET_TEMPLATES).map(([k,t])=>`<button class="btn ghost small" onclick="loadPreset('${k}')">${t.label}</button>`).join('')}
+      </div>
+    </div>`;
+}
+function loadPreset(key){
+  const tpl = PRESET_TEMPLATES[key];
+  if(!tpl) return;
+  if(categories.length && !confirm('Remplacer la liste actuelle de catégories/articles par le modèle "'+tpl.label+'" ?')) return;
+  categories = tpl.categories.map(c => ({
+    name: c.name, icon: c.icon, tracked: c.tracked,
+    items: c.items.map(it => ({ name:it.name, emoji:it.emoji, price:it.price, barcode:'', cost:it.cost, qty:it.qty }))
+  }));
+  renderCats();
+}
+
+function importJson(replace){
+  const el = document.getElementById('json-import');
+  const msg = document.getElementById('import-msg');
+  try{
+    const parsed = JSON.parse(el.value);
+    if(!Array.isArray(parsed)) throw new Error('Le JSON doit être une liste de catégories');
+    const norm = parsed.map(c => ({
+      name: c.name || '',
+      icon: c.icon || '📦',
+      tracked: c.tracked === true,
+      items: (c.items||[]).map(it => ({
+        name: it.name || '', emoji: it.emoji || it.e || '', price: it.price ?? it.p ?? '',
+        barcode: it.barcode || '', cost: it.cost || '', qty: it.qty || ''
+      }))
+    }));
+    categories = replace ? norm : categories.concat(norm);
+    renderCats();
+    msg.innerHTML = `<div class="msg ok">✓ ${norm.length} catégorie(s) importée(s)</div>`;
+    el.value = '';
+  }catch(e){
+    msg.innerHTML = `<div class="msg err">⚠ JSON invalide : ${e.message}</div>`;
+  }
+}
+
+function addCategory(){
+  categories.push({name:'', icon:'📦', tracked:false, items:[{name:'',emoji:'',price:'',barcode:'',cost:'',qty:''}]});
+  renderCats();
+}
+function removeCategory(i){ categories.splice(i,1); renderCats(); }
+function addItem(ci){ categories[ci].items.push({name:'',emoji:'',price:'',barcode:'',cost:'',qty:''}); renderCats(); }
+function removeItem(ci,ii){ categories[ci].items.splice(ii,1); renderCats(); }
+
+function renderCats(){
+  const el = document.getElementById('cats');
+  const isRetail = bases[baseKey]?.retail;
+  el.innerHTML = categories.map((c,ci)=>`
+    <div class="cat-block">
+      <div class="cat-hdr">
+        <input type="text" style="width:50px;flex:0 0 50px;margin:0" value="${c.icon}" oninput="categories[${ci}].icon=this.value">
+        <input type="text" style="flex:1;margin:0" placeholder="Nom de la catégorie (ex: Pizza)" value="${c.name}" oninput="categories[${ci}].name=this.value">
+        ${!isRetail ? `<label class="chk" style="white-space:nowrap;margin:0"><input type="checkbox" ${c.tracked?'checked':''} onchange="categories[${ci}].tracked=this.checked"> Suivi stock</label>` : ''}
+        <button class="btn danger" onclick="removeCategory(${ci})">✕</button>
+      </div>
+      ${c.items.map((it,ii)=>`
+        <div class="item-row ${isRetail?'retail':''}">
+          <input type="text" placeholder="Nom article" value="${it.name}" oninput="categories[${ci}].items[${ii}].name=this.value" style="margin:0">
+          <input type="text" placeholder="emoji" value="${it.emoji}" oninput="categories[${ci}].items[${ii}].emoji=this.value" style="margin:0">
+          <input type="number" placeholder="Prix" value="${it.price}" oninput="categories[${ci}].items[${ii}].price=this.value" style="margin:0">
+          ${isRetail ? `
+            <input type="text" placeholder="Code-barres" value="${it.barcode}" oninput="categories[${ci}].items[${ii}].barcode=this.value" style="margin:0">
+            <input type="number" placeholder="Coût" value="${it.cost}" oninput="categories[${ci}].items[${ii}].cost=this.value" style="margin:0">
+            <input type="number" placeholder="Qté" value="${it.qty}" oninput="categories[${ci}].items[${ii}].qty=this.value" style="margin:0">
+          ` : ''}
+          <button class="btn danger" onclick="removeItem(${ci},${ii})">✕</button>
+        </div>`).join('')}
+      <button class="btn ghost small" onclick="addItem(${ci})">+ Article</button>
+    </div>`).join('') || '<div style="color:var(--muted);font-size:12px">Aucune catégorie — ajoutez-en une.</div>';
+}
+
+let selectedZoneCount = null;
+function renderZoneCountSelector(){
+  const row = document.getElementById('zone-count-row');
+  const base = bases[baseKey];
+  if(!base?.zones){ row.innerHTML=''; return; }
+  const max = base.maxZones || 2;
+  if(selectedZoneCount === null) selectedZoneCount = max;
+  const opts = [];
+  for(let n=1; n<=max; n++) opts.push(n);
+  row.innerHTML = `<label>Nombre de zones cuisine</label>
+    <select id="f-zonecount" onchange="selectedZoneCount=parseInt(this.value);renderZones()">
+      ${opts.map(n=>`<option value="${n}" ${n===selectedZoneCount?'selected':''}>${n} zone${n>1?'s':''}${n===1?' (un seul ticket cuisine)':''}</option>`).join('')}
+    </select>`;
+}
+function renderZones(){
+  const el = document.getElementById('zones-area');
+  const base = bases[baseKey];
+  if(!base?.zones){ el.innerHTML = "<div style=\"color:var(--muted);font-size:12px\">Ce type de commerce n'a pas de cuisine — étape ignorée.</div>"; return; }
+  const zoneCount = selectedZoneCount || base.maxZones || 2;
+  const cols = [];
+  for(let z=1; z<=zoneCount; z++) cols.push({key:'zone'+z, label:'Cuisine '+z});
+  cols.push({key:'boisson', label:'Boisson (pas de ticket cuisine)'});
+  cols.push({key:'none', label:'Aucune zone'});
+  el.innerHTML = `<div class="zone-grid">` + cols.map(col=>`
+    <div class="zone-col">
+      <h3>${col.label}</h3>
+      ${categories.filter(c=>c.name).map(c=>`
+        <label class="chk">
+          <input type="checkbox" data-zone-cat="${c.name}" data-zone-key="${col.key}"
+            ${(c._zone||'none')===col.key?'checked':''}
+            onchange="setCatZone('${c.name.replace(/'/g,"\\'")}','${col.key}',this.checked)">
+          ${c.icon} ${c.name}
+        </label>`).join('') || '<span style="color:var(--muted);font-size:11px">—</span>'}
+    </div>`).join('') + `</div>`;
+}
+function setCatZone(name, key, checked){
+  if(!checked) return;
+  const c = categories.find(c=>c.name===name);
+  if(c) c._zone = key;
+  document.querySelectorAll(`input[data-zone-cat]`).forEach(inp=>{
+    if(inp.dataset.zoneCat===name) inp.checked = (inp.dataset.zoneKey===key);
+  });
+}
+
+function collectConfig(){
+  return {
+    name: document.getElementById('f-name').value.trim(),
+    tagline: document.getElementById('f-tagline').value.trim(),
+    logo: document.getElementById('f-logo').value.trim() || '🏪',
+    logoLetter: (document.getElementById('f-name').value.trim()[0]||'S').toUpperCase(),
+    city: document.getElementById('f-city').value.trim(),
+    phone: document.getElementById('f-phone').value.trim(),
+    currency: document.getElementById('f-currency').value.trim() || 'DT',
+    syncKey: document.getElementById('f-synckey').value.trim(),
+    webEmail: document.getElementById('f-email').value.trim(),
+    webPassword: document.getElementById('f-webpass').value.trim(),
+    managerName: document.getElementById('f-mgrname').value.trim() || 'Manager',
+    managerPin: document.getElementById('f-mgrpin').value.trim() || '1234',
+    cashierName: document.getElementById('f-cshname').value.trim() || 'Caissier',
+    cashierPin: document.getElementById('f-cshpin').value.trim() || '0000',
+    alertThreshold: document.getElementById('f-threshold').value.trim() || 5,
+    // Categories left assigned to a zone beyond the currently selected zone
+    // count (e.g. user dropped from 3 zones to 1) are dropped from the
+    // config entirely rather than leaking into a zone the UI no longer shows.
+    zone1Cats: (selectedZoneCount||1)>=1 ? categories.filter(c=>c._zone==='zone1').map(c=>c.name) : [],
+    zone2Cats: (selectedZoneCount||1)>=2 ? categories.filter(c=>c._zone==='zone2').map(c=>c.name) : [],
+    zone3Cats: (selectedZoneCount||1)>=3 ? categories.filter(c=>c._zone==='zone3').map(c=>c.name) : [],
+    boissonCats: categories.filter(c=>c._zone==='boisson').map(c=>c.name),
+    zone1Label: 'CUISINE 1',
+    zone2Label: 'CUISINE 2',
+    zone3Label: 'CUISINE 3',
+    cardEnabled: features.card,
+    creditEnabled: features.credit,
+    stockEnabled: features.stock,
+  };
+}
+
+function renderReview(){
+  const cfg = collectConfig();
+  document.getElementById('review-out').innerHTML = `<pre>${JSON.stringify({base:baseKey, config:cfg, categories}, null, 2).replace(/</g,'&lt;')}</pre>`;
+}
+
+function go(dir){
+  if(dir>0 && step===0 && !baseKey){ alert('Choisissez un type de commerce.'); return; }
+  if(dir>0 && step===1 && !document.getElementById('f-name').value.trim()){ alert('Le nom du client est requis.'); return; }
+  if(dir>0 && step===3 && !categories.length){ if(!confirm('Aucun article ajouté — continuer quand même ?')) return; }
+  step += dir;
+  const base = bases[baseKey];
+  // Skip zones step entirely for retail bases.
+  if(step===4 && base && !base.zones) step += dir>0 ? 1 : -1;
+  step = Math.max(0, Math.min(5, step));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on', +p.dataset.panel===step));
+  document.querySelectorAll('.step-dot').forEach(d=>d.classList.toggle('on', +d.dataset.dot<=step));
+  document.getElementById('btn-prev').style.visibility = step===0 ? 'hidden' : 'visible';
+  document.getElementById('btn-next').style.display = step===5 ? 'none' : 'inline-block';
+  if(step===2) renderFeatures();
+  if(step===3){
+    if(!categories.length && selectedVertical?.preset) loadPreset(selectedVertical.preset);
+    renderPresets(); renderCats();
+  }
+  if(step===4){ renderZoneCountSelector(); renderZones(); }
+  if(step===5) renderReview();
+}
+
+async function createClient(){
+  const btn = document.getElementById('btn-create');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Création...';
+  document.getElementById('create-msg').innerHTML = '';
+  try{
+    const res = await fetch('/api/create', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ baseKey, config: collectConfig(), categories })
+    });
+    const data = await res.json();
+    if(!data.ok){ throw new Error(data.error || 'Échec de la création'); }
+    window._createdSlug = data.slug;
+    let msg = `✓ Client créé : ${data.clientFile}`;
+    if(data.web?.ok){
+      msg += `\n✓ Dashboard web créé — connexion : ${collectConfig().webEmail} / ${collectConfig().webPassword}`;
+    } else if(data.web){
+      msg += `\n⚠ Fichiers POS créés, mais le dashboard web n'a pas pu être créé automatiquement : ${data.web.error}\n   (vous pouvez le créer manuellement depuis /admin)`;
+    }
+    document.getElementById('created-msg').style.whiteSpace = 'pre-line';
+    document.getElementById('created-msg').textContent = msg;
+    document.getElementById('post-create').style.display = 'block';
+    btn.style.display = 'none';
+  }catch(e){
+    document.getElementById('create-msg').innerHTML = `<div class="msg err">⚠ ${e.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = '✓ Créer le client';
+  }
+}
+
+async function buildClient(){
+  const btn = document.getElementById('btn-build');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Construction en cours (2-5 min)...';
+  document.getElementById('build-out').innerHTML = '';
+  try{
+    const res = await fetch('/api/build', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ slug: window._createdSlug })
+    });
+    const data = await res.json();
+    if(!data.ok){ throw new Error(data.error || 'Échec de la construction'); }
+    document.getElementById('build-out').innerHTML = `<div class="msg ok">✓ EXE construit avec succès.</div><pre>${(data.log||'').replace(/</g,'&lt;')}</pre>`;
+  }catch(e){
+    document.getElementById('build-out').innerHTML = `<div class="msg err">⚠ ${e.message}</div>`;
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = "🔨 Reconstruire l'EXE";
+  }
+}
+</script>
+</body>
+</html>

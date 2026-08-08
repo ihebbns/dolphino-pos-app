@@ -56,7 +56,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 .pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--div);transition:all .15s;}
 .pin-dot.filled{background:var(--gold);border-color:var(--gold);}
 .pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-.pin-btn{padding:14px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:var(--txt);font-size:18px;font-weight:600;cursor:pointer;transition:all .1s;text-align:center;}
+.pin-btn{padding:14px;background:var(--card);border:1px solid var(--div);border-radius:8px;color:var(--txt);font-size:18px;font-weight:600;cursor:pointer;transition:all .1s;text-align:center;position:relative;overflow:hidden;}
 .pin-btn:hover{background:var(--card-h);border-color:var(--gold-dim);}
 .pin-btn:active{transform:scale(.95);}
 .pin-error{color:var(--red);font-size:12px;margin-top:8px;display:none;}
@@ -330,7 +330,16 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <div class="login-brand" id="login-brand">DOLPHINO</div>
     <div class="login-sub" id="login-sub">Restaurant & Fast Food — POS Pro</div>
 
-    <div class="user-cards" id="user-list"></div>
+    <div class="user-cards" id="user-list">
+      <div class="user-card" onclick="selectUser('manager')">
+        <div class="user-avatar" style="background:rgba(200,145,58,.2);color:var(--gold-l)" id="login-manager-avatar">M</div>
+        <div><div class="user-name" id="login-manager-name">Manager</div><div class="user-role">Accès complet · Rapports · Paramètres</div></div>
+      </div>
+      <div class="user-card" onclick="selectUser('caissier')">
+        <div class="user-avatar" style="background:rgba(74,144,217,.2);color:var(--blue)" id="login-cashier-avatar">I</div>
+        <div><div class="user-name" id="login-cashier-name">Caissier</div><div class="user-role">Vente · Impression ticket</div></div>
+      </div>
+    </div>
 
     <div class="pin-wrap" id="pin-wrap">
       <div class="pin-title" id="pin-title">Code PIN</div>
@@ -368,7 +377,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-menu-manage" onclick="showMenuManage()" style="display:none">🛠️ Gérer le menu</button>
     <button class="hdr-btn" id="btn-dash" onclick="showDash()" style="display:none">📊 Tableau de bord</button>
     <button class="hdr-btn" id="btn-cloturer" onclick="cloturerJournee()" style="display:none;border-color:rgba(224,82,82,.3);color:var(--red)">🔒 Clôturer la journée</button>
-    <button class="hdr-btn" id="btn-users" onclick="showUserManager()" style="display:none">👥 Utilisateurs</button>
+    <button class="hdr-btn" id="btn-pins" onclick="showUserManager()" style="display:none">👥 Utilisateurs</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
@@ -553,24 +562,24 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 // ╚══════════════════════════════════════════════════════╝
 const CLIENT_CONFIG = {
   // ── Identity ──────────────────────────────────────────
-  name:        'MIO FOOD',              // Restaurant name (uppercase)
-  tagline:     'MIO FOOD — Fast Food',
-  logo:        '🍕',                    // Emoji logo on login screen
-  logoLetter:  'M',                     // Letter in header circle
-  city:        'Ariana, Tunisie',      // City shown on receipts
-  phone:       '+216 00 000 000',       // Developer contact (shown on lock screen)
+  name:        'COFFE JASMIN',              // Restaurant name (uppercase)
+  tagline:     'COFFE JASMIN — POS Pro',
+  logo:        '🍽️',                    // Emoji logo on login screen
+  logoLetter:  'C',                     // Letter in header circle
+  city:        'ARIANA',      // City shown on receipts
+  phone:       '+216 52 050 581',       // Developer contact (shown on lock screen)
   currency:    'DT',                    // Currency label
 
   // ── Sync / Dashboard ──────────────────────────────────
   syncEnabled: true,
   syncUrl:     'https://servio.tn/api/sync',
-  syncKey:     'DOLPH-XP7S-5151',    // ← CHANGE THIS per client
+  syncKey:     'SRVO-42S3V-001',    // ← CHANGE THIS per client
 
   // ── Users / PINs ──────────────────────────────────────
-  managerName: 'Manager',
+  managerName: 'IHEEB',
   managerPin:  '1234',
-  cashierName: 'Caissier',
-  cashierPin:  '0000',
+  cashierName: 'II',
+  cashierPin:  '1234',
 
   // ── Kitchen zones ─────────────────────────────────────
   zone1Cats:   ['Pizza','Chapati','Baguette','Makloub'],
@@ -685,40 +694,10 @@ const CAT_ICONS={
   "Boisson":'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8l1 6H7L8 2Z"/><path d="M7 8c0 8 2 12 5 12s5-4 5-12"/><path d="M10 12h4"/></svg>'
 };
 
-const USERS_KEY = 'servio-users-v1';
-
-function getDefaultUsers(){
-  return {
-    manager:{id:'manager',pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',color:'var(--gold-l)',bg:'rgba(200,145,58,.2)',letter:CLIENT_CONFIG.managerName.charAt(0),isManager:true},
-    caissier:{id:'caissier',pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',color:'var(--blue)',bg:'rgba(74,144,217,.2)',letter:CLIENT_CONFIG.cashierName.charAt(0),isManager:false}
-  };
-}
-
-function loadUsers(){
-  try{
-    const raw=localStorage.getItem(USERS_KEY);
-    if(raw){const parsed=JSON.parse(raw);if(Object.keys(parsed).length>0)return parsed;}
-  }catch(e){}
-  return getDefaultUsers();
-}
-
-function saveUsers(users){
-  localStorage.setItem(USERS_KEY,JSON.stringify(users));
-}
-
-let USERS=loadUsers();
-
-function renderLoginUsers(){
-  const list=document.getElementById('user-list');
-  if(!list)return;
-  const allUsers=Object.values(USERS);
-  list.innerHTML=allUsers.map(u=>`
-    <div class="user-card" onclick="selectUser('${u.id}')">
-      <div class="user-avatar" style="background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'}">${(u.name||'?').charAt(0)}</div>
-      <div><div class="user-name">${u.name}</div><div class="user-role">${u.isManager?'Accès complet · Rapports · Paramètres':'Vente · Impression ticket'}</div></div>
-    </div>
-  `).join('');
-}
+const USERS={
+  manager:{pin:CLIENT_CONFIG.managerPin,name:CLIENT_CONFIG.managerName,role:'Manager',color:'var(--gold-l)',bg:'rgba(200,145,58,.2)',letter:CLIENT_CONFIG.managerName.charAt(0),isManager:true},
+  caissier:{pin:CLIENT_CONFIG.cashierPin,name:CLIENT_CONFIG.cashierName,role:'Caissier',color:'var(--blue)',bg:'rgba(74,144,217,.2)',letter:CLIENT_CONFIG.cashierName.charAt(0),isManager:false}
+};
 
 // ═══════════════ STATE ═══════════════
 let currentUser=null,currentPinUser=null,pinBuffer='';
@@ -762,6 +741,27 @@ function loadStock(){
 }
 function saveStock(stock){
   localStorage.setItem(STOCK_KEY,JSON.stringify(stock));
+  syncStockToServer(stock);
+}
+
+// ── Sync stock to server for dashboard display ──
+async function syncStockToServer(stock){
+  if(!SYNC_ENABLED) return;
+  try{
+    const items = [];
+    const drinkItems = (MENU['Boisson']||{items:[]}).items;
+    for(const it of drinkItems){
+      if(typeof stock[it.id]==='number'){
+        items.push({ item_id: it.id, item_name: it.name, item_emoji: it.e||'🥤', quantity: stock[it.id] });
+      }
+    }
+    if(items.length === 0) return;
+    await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({ items })
+    });
+  }catch(e){ /* silent — stock sync is not critical */ }
 }
 function decreaseStock(soldItems){
   const stock=loadStock();
@@ -899,11 +899,12 @@ function getSessionBox() {
   return document.getElementById('session-box-content');
 }
 async function showOpenCaisseModal(){
+  const caissierName = currentUser ? USERS[currentUser].name : 'Caissier';
   createSessionModal(`
     <div class="session-icon">💰</div>
     <div class="session-title">Ouverture de Caisse</div>
-    <div class="session-sub">Caissier : <strong>${USERS[currentUser]?.name||'—'}</strong></div>
-    <div class="session-input-row" style="margin-top:10px">
+    <div class="session-sub">Caissier: <strong>${caissierName}</strong></div>
+    <div class="session-input-row">
       <label>Fond de caisse initial (DT)</label>
       <input class="session-inp" type="number" id="fond-inp" placeholder="0.000"
         step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()">
@@ -930,8 +931,7 @@ async function confirmOpenCaisse(){
     if (res?.ok) sessionId = res.id;
   }
 
-  const sid = 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
-  currentSession = { id: sessionId, sid, fondInitial: fondVal, openedAt: sessionData.openedAt, openedAtISO: new Date().toISOString(), cashier: caissierName, date: todayKey() };
+  currentSession = { id: sessionId, fondInitial: fondVal, openedAt: sessionData.openedAt, cashier: caissierName, date: todayKey() };
   saveSessionToStorage();
   destroySessionModal();
 
@@ -1437,12 +1437,12 @@ async function loginSuccess(role){
     document.getElementById('btn-dash').style.display='';
     document.getElementById('btn-menu-manage').style.display='';
     document.getElementById('btn-cloturer').style.display='';
-    document.getElementById('btn-users').style.display='';
+    document.getElementById('btn-pins').style.display='';
   }else{
     document.getElementById('btn-dash').style.display='none';
     document.getElementById('btn-menu-manage').style.display='none';
     document.getElementById('btn-cloturer').style.display='none';
-    document.getElementById('btn-users').style.display='none';
+    document.getElementById('btn-pins').style.display='none';
   }
   // Reset session badge
   document.getElementById('session-badge-hdr').style.display='none';
@@ -1687,7 +1687,7 @@ function encaisser(){
     type:orderType,cliName:document.getElementById('cli-name')?.value||'',
     cliTel:document.getElementById('cli-tel')?.value||'',
     cashier:USERS[currentUser].name,
-    sessionId:currentSession?.sid||''};
+    sessionId:currentSession?.id||null};
   if(window.electronAPI?.saveSale){
     try{
       const saved = await window.electronAPI.saveSale(od);
@@ -2073,9 +2073,6 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
     fondInitial: currentSession?.fondInitial || 0,
     montantCompte, theorique, ecart,
     cashier: USERS[currentUser].name,
-    sessionId: currentSession?.sid || '',
-    openedAtISO: currentSession?.openedAtISO || null,
-    closedAtISO: new Date().toISOString(),
   });
 
   // Close modal — caisse is now closed.
@@ -2103,87 +2100,118 @@ async function confirmerCloture(total, count, cash, card, mob, theorique, bizDat
   flash('🔒 Caisse clôturée — ' + ecartMsg);
 }
 
-// ═══════════════ USER MANAGER (Dynamic Add/Remove/Edit) ═══════════════
-function showUserManager(){
-  if(!USERS[currentUser]||!USERS[currentUser].isManager){alert('Accès réservé au Manager.');return;}
-  const allUsers=Object.values(USERS);
-  const userRows=allUsers.map(u=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--card);border:1px solid var(--div);border-radius:8px;margin-bottom:6px;">
-      <div style="width:32px;height:32px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${(u.name||'?').charAt(0)}</div>
-      <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">${u.name}</div><div style="font-size:10px;color:var(--muted);">${u.role}${u.isManager?' · Manager':''}</div></div>
-      <button class="hdr-btn" onclick="editUser('${u.id}')" style="font-size:10px;padding:5px 8px;">✏️</button>
-      ${u.id!=='manager'?`<button class="hdr-btn" onclick="deleteUser('${u.id}')" style="font-size:10px;padding:5px 8px;color:var(--red);border-color:rgba(224,82,82,.3);">🗑️</button>`:''}
-    </div>
-  `).join('');
-  createSessionModal(`
-    <div class="session-icon">👥</div>
-    <div class="session-title">Gestion des utilisateurs</div>
-    <div class="session-sub">Ajoutez, modifiez ou supprimez des utilisateurs avec PIN.</div>
-    <div id="um-list" style="max-height:240px;overflow-y:auto;margin-bottom:12px;">${userRows}</div>
-    <button class="btn-session-open" onclick="showAddUser()">+ Ajouter un utilisateur</button>
-    <button class="mcancel" style="margin-top:8px" onclick="destroySessionModal()">Fermer</button>
-  `);
-}
-function showAddUser(){
-  createSessionModal(`
-    <div class="session-icon">➕</div>
-    <div class="session-title">Nouvel utilisateur</div>
-    <div class="session-input-row"><label>Nom</label><input class="session-inp" type="text" id="um-name" placeholder="Nom de l'utilisateur" autocomplete="off" style="font-size:15px;"></div>
-    <div class="session-input-row" style="margin-top:8px;"><label>Rôle</label><select class="session-inp" id="um-role" style="font-size:14px;font-weight:500;"><option value="Caissier">Caissier</option><option value="Serveur">Serveur</option><option value="Manager">Manager</option></select></div>
-    <div class="session-input-row" style="margin-top:8px;"><label>Code PIN (4-6 chiffres)</label><input class="session-inp" type="password" id="um-pin" placeholder="PIN" inputmode="numeric" maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px;"></div>
-    <button class="btn-session-open" style="margin-top:14px;" onclick="confirmAddUser()">✓ Ajouter</button>
-    <button class="mcancel" style="margin-top:8px" onclick="showUserManager()">← Retour</button>
-  `);
-  setTimeout(()=>{document.getElementById('um-name')?.focus();},100);
-}
-function confirmAddUser(){
-  const name=(document.getElementById('um-name')?.value||'').trim();
-  const role=document.getElementById('um-role')?.value||'Caissier';
-  const pin=(document.getElementById('um-pin')?.value||'').trim();
-  if(!name){alert('Veuillez entrer un nom.');return;}
-  if(!/^\d{4,6}$/.test(pin)){alert('PIN invalide — 4 à 6 chiffres requis.');return;}
-  const id='user_'+Date.now();const isManager=role==='Manager';
-  const colors=[{color:'var(--blue)',bg:'rgba(74,144,217,.2)'},{color:'var(--green)',bg:'rgba(61,184,122,.2)'},{color:'var(--orange)',bg:'rgba(245,166,35,.2)'},{color:'var(--red)',bg:'rgba(224,82,82,.2)'},{color:'#a78bfa',bg:'rgba(167,139,250,.2)'}];
-  const ci=Object.keys(USERS).length%colors.length;
-  USERS[id]={id,pin,name,role,color:isManager?'var(--gold-l)':colors[ci].color,bg:isManager?'rgba(200,145,58,.2)':colors[ci].bg,letter:name.charAt(0),isManager};
-  saveUsers(USERS);flash('✓ Utilisateur "'+name+'" ajouté');showUserManager();
-}
-function editUser(uid){
-  const u=USERS[uid];if(!u)return;
-  createSessionModal(`
-    <div class="session-icon">✏️</div>
-    <div class="session-title">Modifier — ${u.name}</div>
-    <div class="session-input-row"><label>Nom</label><input class="session-inp" type="text" id="um-edit-name" value="${u.name}" autocomplete="off" style="font-size:15px;"></div>
-    <div class="session-input-row" style="margin-top:8px;"><label>Rôle</label><select class="session-inp" id="um-edit-role" style="font-size:14px;font-weight:500;"><option value="Caissier"${u.role==='Caissier'?' selected':''}>Caissier</option><option value="Serveur"${u.role==='Serveur'?' selected':''}>Serveur</option><option value="Manager"${u.role==='Manager'?' selected':''}>Manager</option></select></div>
-    <div class="session-input-row" style="margin-top:8px;"><label>Nouveau PIN (vide = pas de changement)</label><input class="session-inp" type="password" id="um-edit-pin" placeholder="••••" inputmode="numeric" maxlength="6" autocomplete="new-password" style="font-size:22px;letter-spacing:6px;"></div>
-    <button class="btn-session-open" style="margin-top:14px;" onclick="confirmEditUser('${uid}')">✓ Enregistrer</button>
-    <button class="mcancel" style="margin-top:8px" onclick="showUserManager()">← Retour</button>
-  `);
-  setTimeout(()=>{document.getElementById('um-edit-name')?.focus();},100);
-}
-function confirmEditUser(uid){
-  const u=USERS[uid];if(!u)return;
-  const name=(document.getElementById('um-edit-name')?.value||'').trim();
-  const role=document.getElementById('um-edit-role')?.value||u.role;
-  const pin=(document.getElementById('um-edit-pin')?.value||'').trim();
-  if(!name){alert('Le nom ne peut pas être vide.');return;}
-  if(pin&&!/^\d{4,6}$/.test(pin)){alert('PIN invalide — 4 à 6 chiffres requis.');return;}
-  u.name=name;u.role=role;u.letter=name.charAt(0);u.isManager=role==='Manager';
-  if(u.isManager){u.color='var(--gold-l)';u.bg='rgba(200,145,58,.2)';}
-  if(pin)u.pin=pin;
-  saveUsers(USERS);
-  if(uid===currentUser){document.getElementById('s-name').textContent=u.name;document.getElementById('s-av').textContent=u.letter;}
-  flash('✓ Utilisateur "'+name+'" modifié');showUserManager();
-}
-function deleteUser(uid){
-  const u=USERS[uid];if(!u)return;
-  if(uid==='manager'){alert('Impossible de supprimer le Manager principal.');return;}
-  if(!confirm('Supprimer l\'utilisateur "'+u.name+'" ?'))return;
-  delete USERS[uid];saveUsers(USERS);flash('✓ Utilisateur "'+u.name+'" supprimé');showUserManager();
+// ═══════════════ USER MANAGEMENT (replaces PIN Manager) ═══════════════
+const USERS_KEY = 'servio-users-v1';
+
+function loadUsersFromStorage(){
+  try{
+    const raw = localStorage.getItem(USERS_KEY);
+    if(raw) {
+      const saved = JSON.parse(raw);
+      if(saved && typeof saved === 'object' && Object.keys(saved).length) return saved;
+    }
+  }catch(e){}
+  return null;
 }
 
-// Init users & render login on startup
-renderLoginUsers();
+function saveUsersToStorage(){
+  localStorage.setItem(USERS_KEY, JSON.stringify(USERS));
+}
+
+function initUsers(){
+  const saved = loadUsersFromStorage();
+  if(saved){
+    // Restore saved users (overrides CLIENT_CONFIG defaults)
+    Object.keys(saved).forEach(k => { USERS[k] = saved[k]; });
+    // Remove users that were deleted
+    Object.keys(USERS).forEach(k => { if(!saved[k]) delete USERS[k]; });
+  }
+}
+initUsers();
+
+function showUserManager(){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
+  renderUserManager();
+}
+
+function renderUserManager(){
+  const userList = Object.entries(USERS).map(([id, u]) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--div);">
+      <div style="width:36px;height:36px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${u.name.charAt(0)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${u.name}</div>
+        <div style="font-size:10px;color:var(--muted);">${u.role} · PIN: ${u.pin}</div>
+      </div>
+      <button onclick="editUser('${id}')" style="padding:4px 10px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);cursor:pointer;font-size:11px;">✏️</button>
+      ${id !== 'manager' ? `<button onclick="deleteUser('${id}')" style="padding:4px 10px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);cursor:pointer;font-size:11px;">✕</button>` : ''}
+    </div>
+  `).join('');
+
+  createSessionModal(`
+    <div class="session-icon">👥</div>
+    <div class="session-title">Gestion des Utilisateurs</div>
+    <div style="max-height:250px;overflow-y:auto;margin-bottom:14px;">
+      ${userList}
+    </div>
+    <div style="border-top:1px solid var(--div);padding-top:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;">AJOUTER UN UTILISATEUR</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="new-user-name" placeholder="Nom" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;" autocomplete="off">
+        <input id="new-user-pin" placeholder="PIN (4 chiffres)" maxlength="6" inputmode="numeric" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;text-align:center;" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <select id="new-user-role" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;">
+          <option value="Caissier">Caissier</option>
+          <option value="Serveur">Serveur</option>
+          <option value="Manager">Manager</option>
+        </select>
+        <button onclick="addUser()" style="padding:8px 16px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#080604;font-size:12px;font-weight:700;cursor:pointer;">+ Ajouter</button>
+      </div>
+    </div>
+    <button class="mcancel" style="margin-top:14px" onclick="destroySessionModal()">Fermer</button>
+  `);
+}
+
+function addUser(){
+  const name = (document.getElementById('new-user-name')?.value||'').trim();
+  const pin = (document.getElementById('new-user-pin')?.value||'').trim();
+  const role = document.getElementById('new-user-role')?.value||'Caissier';
+  if(!name){ alert('Nom requis'); return; }
+  if(!/^\d{4,6}$/.test(pin)){ alert('PIN invalide — 4 à 6 chiffres'); return; }
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g,'_');
+  if(USERS[id]){ alert('Cet utilisateur existe déjà'); return; }
+  const isManager = role === 'Manager';
+  USERS[id] = { pin, name, role, color: isManager?'var(--gold-l)':'var(--blue)', bg: isManager?'rgba(200,145,58,.2)':'rgba(74,144,217,.2)', letter: name.charAt(0), isManager };
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ ' + name + ' ajouté');
+}
+
+function editUser(id){
+  const u = USERS[id];
+  if(!u) return;
+  const newPin = prompt('Nouveau PIN pour ' + u.name + ' (4-6 chiffres):', u.pin);
+  if(newPin === null) return;
+  if(!/^\d{4,6}$/.test(newPin)){ alert('PIN invalide'); return; }
+  USERS[id].pin = newPin;
+  const newName = prompt('Nom:', u.name);
+  if(newName && newName.trim()) {
+    USERS[id].name = newName.trim();
+    USERS[id].letter = newName.charAt(0);
+  }
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ ' + USERS[id].name + ' modifié');
+}
+
+function deleteUser(id){
+  if(!USERS[id]) return;
+  if(!confirm('Supprimer ' + USERS[id].name + ' ?')) return;
+  delete USERS[id];
+  saveUsersToStorage();
+  renderUserManager();
+  flash('✓ Utilisateur supprimé');
+}
 
 function showHistorique(){
   if(!hist.length){alert('Aucune vente cette session.');return;}
@@ -2270,7 +2298,11 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
   const hdrName   = document.getElementById('hdr-logo-name');
   if(hdrLetter) hdrLetter.textContent = CLIENT_CONFIG.logoLetter;
   if(hdrName)   hdrName.textContent   = CLIENT_CONFIG.name;
-  // Login cards rendered dynamically via renderLoginUsers()
+  // Login cards
+  const managerCard = document.getElementById('login-manager-name');
+  const cashierCard = document.getElementById('login-cashier-name');
+  if(managerCard) managerCard.textContent = CLIENT_CONFIG.managerName;
+  if(cashierCard) cashierCard.textContent = CLIENT_CONFIG.cashierName;
   // Remote lock contact
   const lockPhone = document.getElementById('remote-lock-phone');
   if(lockPhone) lockPhone.textContent = CLIENT_CONFIG.phone;
@@ -2278,12 +2310,11 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
 
 // ═══════════════ RIPPLE (visual polish only, never blocks typing) ═══════════════
 document.addEventListener('pointerdown',function(e){
-  const t=e.target.closest('.pc,.hdr-btn,.enc,.pin-btn,.user-card,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
+  // Skip ripple on login screen elements (causes position bugs) and near inputs
+  if(e.target.closest('#login-screen')) return;
+  if(e.target.closest('input,textarea,select')) return;
+  const t=e.target.closest('.pc,.hdr-btn,.enc,.pb,.db,.ot-btn,.btn-ok,.btn-print,.btn-new');
   if(!t)return;
-  // Anchor the ripple to the clicked element. Without position:relative the
-  // absolute ripple falls back to the page's top-left corner.
-  if(getComputedStyle(t).position==='static'){ t.style.position='relative'; }
-  t.style.overflow='hidden';
   const rect=t.getBoundingClientRect();
   const size=Math.max(rect.width,rect.height);
   const r=document.createElement('span');
@@ -2291,8 +2322,6 @@ document.addEventListener('pointerdown',function(e){
   r.style.width=r.style.height=size+'px';
   r.style.left=(e.clientX-rect.left-size/2)+'px';
   r.style.top=(e.clientY-rect.top-size/2)+'px';
-  const prevPos=getComputedStyle(t).position;
-  if(prevPos==='static')t.style.position='relative';
   t.appendChild(r);
   setTimeout(()=>r.remove(),600);
 });

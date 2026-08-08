@@ -8,7 +8,7 @@ let dbAvailable = false;
 let dbInitError = null;
 let dbReadyPromise = null;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function businessDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -121,6 +121,18 @@ function runMigrations() {
   if (!columnNames.has('session_id')) {
     db.exec("ALTER TABLE sales ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
   }
+  if (!columnNames.has('voided')) {
+    db.exec('ALTER TABLE sales ADD COLUMN voided INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnNames.has('void_reason')) {
+    db.exec("ALTER TABLE sales ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columnNames.has('voided_by')) {
+    db.exec("ALTER TABLE sales ADD COLUMN voided_by TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columnNames.has('voided_at')) {
+    db.exec("ALTER TABLE sales ADD COLUMN voided_at TEXT NOT NULL DEFAULT ''");
+  }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_sales_business_date ON sales(business_date)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_sales_num ON sales(num)');
@@ -185,6 +197,10 @@ function serializeSaleRow(row) {
     cliName: row.cli_name || '',
     cliTel: row.cli_tel || '',
     sessionId: row.session_id || '',
+    voided: !!row.voided,
+    voidReason: row.void_reason || '',
+    voidedBy: row.voided_by || '',
+    voidedAt: row.voided_at || '',
     createdAt: row.created_at,
   };
 }
@@ -292,6 +308,22 @@ async function saveSale(userDataPath, rawSale) {
   return { ok: true, id, ...sale };
 }
 
+// Sales are never deleted or overwritten — voiding flags the row and records
+// who/why/when, the same append-only philosophy as the stock and credit
+// ledgers. Reports must exclude voided rows from totals but keep showing them,
+// marked, so a voided sale stays traceable rather than silently vanishing.
+async function voidSale(userDataPath, id, reason, voidedBy) {
+  await getDatabaseReady(userDataPath);
+  if (!dbAvailable || !db) return { ok: false, error: 'SQLite indisponible' };
+  if (!id) return { ok: false, error: 'Vente sans identifiant SQLite' };
+  db.run(
+    `UPDATE sales SET voided=1, void_reason=?, voided_by=?, voided_at=? WHERE id=?`,
+    [String(reason || ''), String(voidedBy || ''), new Date().toISOString(), id]
+  );
+  persistDatabase();
+  return { ok: true };
+}
+
 function getDatabaseStatus() {
   return {
     available: dbAvailable,
@@ -346,6 +378,7 @@ module.exports = {
   getDatabaseStatus,
   getSales,
   saveSale,
+  voidSale,
   saveSession,
   closeSession,
   getSessions,

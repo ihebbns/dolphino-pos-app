@@ -1,10 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  printReceipt:   (html)        => ipcRenderer.send('print-receipt', html),
+  printReceipt:   (html, zone)  => ipcRenderer.send('print-receipt', html, zone),
+  listPrinters:   ()            => ipcRenderer.invoke('list-printers'),
+  getHwConfig:    ()            => ipcRenderer.invoke('hw-get-config'),
+  saveHwConfig:   (partial)     => ipcRenderer.invoke('hw-save-config', partial),
   onTriggerPrint: (cb)          => ipcRenderer.on('trigger-print', cb),
   getSales:       ()            => ipcRenderer.invoke('db-get-sales'),
   saveSale:       (sale)        => ipcRenderer.invoke('db-save-sale', sale),
+  voidSale:       (id, reason, voidedBy) => ipcRenderer.invoke('db-void-sale', id, reason, voidedBy),
   getDbStatus:    ()            => ipcRenderer.invoke('db-get-status'),
   openCashDrawer: ()            => ipcRenderer.invoke('open-cash-drawer'),
   saveSession:    (session)     => ipcRenderer.invoke('db-save-session', session),
