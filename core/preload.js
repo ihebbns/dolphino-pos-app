@@ -2,6 +2,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   printReceipt:   (html, zone)  => ipcRenderer.send('print-receipt', html, zone),
+  // A ticket that silently never reached the printer used to be visible only
+  // in a console nobody's watching — no different from it just not existing.
+  // This is the till's own signal that one just failed, so the renderer can
+  // put something in front of a human instead.
+  onPrintFailed:  (cb)          => ipcRenderer.on('print-failed', (_e, info) => cb(info)),
   listPrinters:   ()            => ipcRenderer.invoke('list-printers'),
   getHwConfig:    ()            => ipcRenderer.invoke('hw-get-config'),
   saveHwConfig:   (partial)     => ipcRenderer.invoke('hw-save-config', partial),

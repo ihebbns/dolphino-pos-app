@@ -496,6 +496,7 @@ ipcMain.on('print-receipt', (event, htmlContent, zone) => {
       const deviceName = await resolveReceiptPrinter(printWin.webContents, zonePrinter);
       if (!deviceName) {
         console.log('[Print] no physical printer — ticket not printed (refusing PDF/XPS fallback)');
+        try { event.sender.send('print-failed', { zone: zone || 'client', reason: 'no-printer' }); } catch (e) {}
         cleanup();
         return;
       }
@@ -510,6 +511,9 @@ ipcMain.on('print-receipt', (event, htmlContent, zone) => {
         (success, errorType) => {
           console.log('[Print]', (success ? 'OK: ' : 'FAILED: ') + deviceName +
                       (errorType ? ' — ' + errorType : '') + '  ' + (Date.now() - t0) + 'ms');
+          if (!success) {
+            try { event.sender.send('print-failed', { zone: zone || 'client', reason: errorType || 'print-error', deviceName }); } catch (e) {}
+          }
           cleanup();
         }
       );

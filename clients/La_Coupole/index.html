@@ -395,6 +395,13 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 </div>
 
 <!-- ══ HEADER ══ -->
+<!-- Persistent until dismissed on purpose — a silent print failure is exactly
+     the bug this exists to fix, so it can't ALSO auto-hide like a normal toast. -->
+<div id="print-fail-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:500;background:#B91C1C;color:#fff;padding:10px 16px;font-size:13px;font-weight:700;align-items:center;justify-content:center;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.3)">
+  <span>🖨️⚠️</span>
+  <span id="print-fail-msg">Ticket non imprimé</span>
+  <button onclick="dismissPrintFailBanner()" style="background:rgba(255,255,255,.2);border:none;border-radius:6px;color:#fff;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">OK, compris</button>
+</div>
 <header id="hdr" style="display:none">
   <div class="logo">
     <div class="logo-d" id="hdr-logo-letter">D</div>
@@ -1378,6 +1385,25 @@ function decreaseStock(soldItems){
   console.log(`[STOCK] deltas to queue: ${deltas.length}`, deltas);
   saveStock(stock);
   queueStockDeltas(deltas);
+}
+
+// A voided sale gives its items back — the mirror of decreaseStock(), but it
+// can't reuse queueStockDeltas() (the /api/stock PATCH "sold" path always
+// subtracts, by design, so a server that only ever saw negative deltas can't
+// be tricked into adding stock back through it). Posts a proper 'return'
+// stock movement instead — the same signed-ledger mechanism a delivery uses,
+// just with the sign a refund actually means.
+function increaseStock(items){
+  if(!isStockEnabled()) return;
+  const stock=loadStock();
+  for(const it of items){
+    if(!isDrinkItem(it)) continue;
+    const q = it.qty||1;
+    const cur = typeof stock[it.id]==='number' ? stock[it.id] : 0;
+    stock[it.id] = cur + q;
+    queueStockMovement(it.id, 'return', q, 'Annulation vente');
+  }
+  saveStock(stock);
 }
 
 // ── STOCK DEBUG — call stockDebug() from DevTools console (F12) ──────────
@@ -3283,6 +3309,7 @@ function encaisser(){
   // is data, not a printing preference, and can't depend on a toggle staff
   // may turn off for this one sale.
   const wasOnlineOrder = finalizeOnlineOrderPayment();
+  od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
   // 1) Client ticket — respect the "Imprimer ticket" toggle
   //    Checked  → show receipt window on screen + auto-print (drawer opens inside autoPrintAll)
   //    Unchecked → silent: NO save/receipt window, NO print; just open drawer for cash & go to next order
@@ -3322,10 +3349,11 @@ function encaisser(){
 // ticket and mis-marking the wrong online order as paid. Called BEFORE the
 // print-checkbox branch in every checkout path so it always runs.
 function finalizeOnlineOrderPayment(){
-  if(!pendingOnlineOrderPayment) return false;
-  markOnlineOrderPaid(pendingOnlineOrderPayment.id, true);
+  if(!pendingOnlineOrderPayment) return null;
+  const id = pendingOnlineOrderPayment.id;
+  markOnlineOrderPaid(id, true);
   pendingOnlineOrderPayment = null;
-  return true;
+  return id; // truthy (a real order id) or null — also stashed on od.onlineOrderId for void() to reverse later
 }
 function autoPrintAll(od, skipKitchen){
   // Cash drawer is kicked early (fire-and-forget) at the top of encaisser(),
@@ -4270,13 +4298,16 @@ function showOrderDetail(idx, fromHistory){
       <div style="font-size:12px;font-weight:700;color:var(--gold-l)">${f((it.p||it.price||0)*(it.qty||1))} DT</div>
     </div>`).join('');
   createSessionModal(`
+    ${od.voided?`<div style="background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--red)">
+      🗑️ <strong>Vente annulée</strong> — ${od.voidReason||''}<br>par ${od.voidedBy||'—'} · ${od.voidedAt?new Date(od.voidedAt).toLocaleString('fr-TN'):''}
+    </div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
         <div style="font-size:24px;font-weight:800;color:var(--gold-l)">#${String(od.num).padStart(3,'0')}</div>
         <div style="font-size:11px;color:var(--muted)">${od.time} · ${od.cashier||''}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:20px;font-weight:800;color:var(--gold-l)">${f(od.g)} DT</div>
+        <div style="font-size:20px;font-weight:800;color:var(--gold-l)${od.voided?';text-decoration:line-through;opacity:.6':''}">${f(od.g)} DT</div>
         <div style="font-size:10px;color:var(--muted)">${pm[od.payMode]||od.payMode}</div>
       </div>
     </div>
@@ -4293,8 +4324,71 @@ function showOrderDetail(idx, fromHistory){
       <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:6px;border-top:1px solid var(--div)"><span>TOTAL</span><span style="color:var(--gold-l)">${f(od.g)} DT</span></div>
       ${od.payMode==='cash'?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px"><span>Reçu</span><span>${f(od.r)} DT</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--green)"><span>Monnaie</span><span>${f(od.monnaie)} DT</span></div>`:''}
       </div>
-    <button class="mcancel" style="margin-top:14px" onclick="${fromHistory?'showHistorique()':'destroySessionModal()'}">${fromHistory?'← Retour':'Fermer'}</button>
+    ${!od.voided?`<button class="mcancel" style="margin-top:14px;color:var(--red);border-color:rgba(224,82,82,.3)" onclick="openVoidModal(${idx}, ${!!fromHistory})">🗑️ Annuler cette vente</button>`:''}
+    <button class="mcancel" style="margin-top:8px" onclick="${fromHistory?'showHistorique()':'destroySessionModal()'}">${fromHistory?'← Retour':'Fermer'}</button>
   `);
+}
+
+// ═══════════════ VOID / ANNULATION D'UNE VENTE ═══════════════
+// Correction path for a mistaken sale. Any logged-in user may void (this
+// till's PIN system already hands staff real access — gating this behind
+// Manager would be theatre, not security). What actually matters is that
+// every void is reasoned, attributed, timestamped, and never erases the
+// sale — it stays visible, marked, excluded from today's total.
+const VOID_REASONS = ['Erreur de saisie','Mauvais article','Remboursement client','Vente en double'];
+function openVoidModal(idx, fromHistory){
+  const od = hist[idx];
+  if(!od){ flash('Vente introuvable.'); return; }
+  if(od.voided){ flash('Cette vente est déjà annulée.'); return; }
+  createSessionModal(`
+    <div class="session-icon">🗑️</div>
+    <div class="session-title" style="font-size:16px">Annuler la vente #${String(od.num).padStart(3,'0')}</div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:10px">
+      ${f(od.g)} DT — cette action est enregistrée avec votre nom et ne peut pas être défaite.
+    </div>
+    <div style="display:grid;gap:7px;margin-bottom:10px">
+      ${VOID_REASONS.map(r=>`<button class="btn-session-open" style="margin:0;padding:11px;background:var(--red)" onclick="confirmVoidSale(${idx},'${r}')">${r}</button>`).join('')}
+    </div>
+    <div class="session-input-row">
+      <label>Autre motif</label>
+      <input class="session-inp" type="text" id="void-reason-custom" placeholder="Préciser..." autocomplete="off">
+    </div>
+    <button class="btn-session-open" style="margin-top:8px;padding:10px;background:var(--red)" onclick="confirmVoidSaleCustom(${idx})">✓ Annuler avec ce motif</button>
+    <button class="mcancel" style="margin-top:8px" onclick="showOrderDetail(${idx}, ${!!fromHistory})">← Retour</button>
+  `);
+}
+function confirmVoidSaleCustom(idx){
+  const val = (document.getElementById('void-reason-custom')?.value||'').trim();
+  if(!val){ flash('Motif requis.'); return; }
+  confirmVoidSale(idx, val);
+}
+function confirmVoidSale(idx, reason){
+  const od = hist[idx];
+  if(!od || od.voided) return;
+  const voidedBy = (currentUser && USERS[currentUser]) ? USERS[currentUser].name : '';
+  if(window.electronAPI?.voidSale && od.id){
+    window.electronAPI.voidSale(od.id, reason, voidedBy).catch(e=>console.error('voidSale failed:', e));
+  }
+  od.voided = true;
+  od.voidReason = reason;
+  od.voidedBy = voidedBy;
+  od.voidedAt = new Date().toISOString();
+  // Pull it back out of today's running total — daily is a live accumulator,
+  // not recomputed from hist, so it has to be corrected here explicitly.
+  daily -= od.g;
+  const dt = document.getElementById('dt'); if(dt) dt.textContent = 'Ventes du jour : '+f(daily)+' DT';
+  increaseStock(od.items);
+  // This sale paid for an online order — the payment didn't stand, so the
+  // order goes back to "needs payment" rather than staying marked paid for
+  // money that was refunded (only possible within the same session that
+  // made the sale — od.onlineOrderId isn't persisted to SQLite, so a much
+  // older sale voided after a restart won't have it; a known, accepted gap).
+  if(od.onlineOrderId){ postOnlineOrderAction(od.onlineOrderId, 'unmarkPaid'); }
+  if(od.payMode === 'cash'){
+    openDrawer('void_refund', od.g, 'Annulation vente #'+od.num+' — '+reason);
+  }
+  destroySessionModal();
+  flash('🗑️ Vente #'+String(od.num).padStart(3,'0')+' annulée');
 }
 function showHistorique(){
   // Show ONLY sales from the CURRENT caisse session (never the whole history)
@@ -4313,16 +4407,18 @@ function showHistorique(){
   }
   const tl={place:'🏠 Place',take:'🥡 Emporter',del:'🛵 Livraison'};
   const pm={cash:'💵',card:'💳',mob:'📱',credit:'📒'};
-  const total=sessionSales.reduce((a,h)=>a+h.g,0);
+  // Voided sales stay in the list (never erased) but never count toward the
+  // total — same rule the live `daily` accumulator already follows.
+  const total=sessionSales.filter(h=>!h.voided).reduce((a,h)=>a+h.g,0);
   const rows=[...sessionSales].reverse().map(h=>{
     const gi=hist.indexOf(h);
     return `
-    <div onclick="showOrderDetail(${gi}, true)" style="display:flex;justify-content:space-between;align-items:center;gap:4px;padding:8px 6px;border-bottom:1px solid var(--div);font-size:12px;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='var(--card)'" onmouseout="this.style.background=''">
+    <div onclick="showOrderDetail(${gi}, true)" style="display:flex;justify-content:space-between;align-items:center;gap:4px;padding:8px 6px;border-bottom:1px solid var(--div);font-size:12px;cursor:pointer;border-radius:6px;${h.voided?'opacity:.55':''}" onmouseover="this.style.background='var(--card)'" onmouseout="this.style.background=''">
       <span style="color:var(--muted);width:42px">#${String(h.num).padStart(3,'0')}</span>
       <span style="width:50px">${h.time}</span>
-      <span style="width:24px">${tl[h.type]?.slice(0,2)||'🏠'}</span>
+      <span style="width:24px">${h.voided?'🗑️':(tl[h.type]?.slice(0,2)||'🏠')}</span>
       <span style="flex:1;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.cashier||'—'}</span>
-      <span style="text-align:right;font-weight:700;color:var(--gold-l)">${f(h.g)} DT</span>
+      <span style="text-align:right;font-weight:700;color:${h.voided?'var(--muted)':'var(--gold-l)'};${h.voided?'text-decoration:line-through':''}">${f(h.g)} DT</span>
       <span style="width:22px;text-align:right">${pm[h.payMode]||'💵'}</span>
       <span style="width:12px;text-align:right;color:var(--muted)">›</span>
     </div>`;
@@ -4510,6 +4606,7 @@ function confirmCreditSale(idx){
   hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
+  od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
   if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
@@ -4921,6 +5018,7 @@ function confirmWalletSale(idx){
   hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
+  od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
   if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
@@ -5210,6 +5308,33 @@ async function checkLicense(){
   } catch(e) {
     // No internet or server error — don't block the app
   }
+}
+
+// ═══════════════ PRINT-FAILURE ALERT ═══════════════
+// A silent print failure only ever reached a console nobody's watching (see
+// main.js — the [Print] log line). This turns it into something a human at
+// the till actually sees, persistent until dismissed since the entire point
+// is staff might otherwise miss it. A second failure while one is already
+// showing just bumps a count rather than stacking banners.
+let printFailCount = 0;
+const PRINT_FAIL_ZONE_LABEL = { client: 'Ticket client', zone1: 'Bon cuisine — '+(CLIENT_CONFIG.zone1Label||'Zone 1'), zone2: 'Bon cuisine — '+(CLIENT_CONFIG.zone2Label||'Zone 2'), zone3: 'Bon cuisine — Zone 3' };
+function showPrintFailBanner(info){
+  printFailCount++;
+  const zoneLabel = PRINT_FAIL_ZONE_LABEL[info?.zone] || 'Ticket';
+  const why = info?.reason === 'no-printer' ? 'aucune imprimante détectée' : 'échec d’impression';
+  const el = document.getElementById('print-fail-banner');
+  const msg = document.getElementById('print-fail-msg');
+  if(!el || !msg) return;
+  msg.textContent = (printFailCount>1?`(${printFailCount}) `:'') + `${zoneLabel} non imprimé — ${why}. Vérifiez l'imprimante.`;
+  el.style.display = 'flex';
+}
+function dismissPrintFailBanner(){
+  printFailCount = 0;
+  const el = document.getElementById('print-fail-banner');
+  if(el) el.style.display = 'none';
+}
+if(window.electronAPI?.onPrintFailed){
+  window.electronAPI.onPrintFailed(info => { try{ showPrintFailBanner(info); }catch(e){} });
 }
 
 // Check on startup after 10 seconds (give login time to load), then every 30 minutes
