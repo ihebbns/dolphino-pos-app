@@ -465,7 +465,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
     <div class="hdr-menu-wrap">
       <button class="hdr-btn hdr-icon" onclick="toggleHdrMenu(event)" title="Menu">☰</button>
       <div class="hdr-menu" id="hdr-menu">
-        <button class="hdr-menu-item" onclick="closeHdrMenu();showCreditManager()">📒 Crédits</button>
+        <button class="hdr-menu-item" id="btn-credits" onclick="closeHdrMenu();showCreditManager()">📒 Crédits</button>
         <button class="hdr-menu-item" onclick="closeHdrMenu();showHistorique()">📋 Historique</button>
         <button class="hdr-menu-item" id="btn-dash" onclick="closeHdrMenu();showDash()" style="display:none">📊 Tableau de bord</button>
         <div class="hdr-menu-sep"></div>
@@ -686,7 +686,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
       <div class="hdr-menu-wrap">
         <button class="hdr-btn hdr-icon" onclick="toggleTblHdrMenu(event)" title="Menu">☰</button>
         <div class="hdr-menu" id="tbl-hdr-menu">
-          <button class="hdr-menu-item" onclick="closeTblHdrMenu();showCreditManager()">📒 Crédits</button>
+          <button class="hdr-menu-item" id="tbl-btn-credits" onclick="closeTblHdrMenu();showCreditManager()">📒 Crédits</button>
           <button class="hdr-menu-item" onclick="closeTblHdrMenu();showHistorique()">📋 Historique</button>
           <button id="tbl-btn-dash" class="hdr-menu-item" onclick="closeTblHdrMenu();showDash()" style="display:none">📊 Tableau de bord</button>
           <div class="hdr-menu-sep"></div>
@@ -1554,6 +1554,12 @@ async function confirmIngredientAction(ingKey, name, kind){
 // so it can be flipped from the web without rebuilding anyone's EXE. Cached
 // locally so pulling the network cable cannot change the answer.
 const STOCK_MODULE_KEY = 'servio-stock-module-v1';
+function isCreditEnabled(){
+  return !(CLIENT_CONFIG.modules && CLIENT_CONFIG.modules.credit === false);
+}
+function isCardEnabled(){
+  return !(CLIENT_CONFIG.modules && CLIENT_CONFIG.modules.card === false);
+}
 function isStockEnabled(){
   try{
     const v = localStorage.getItem(STOCK_MODULE_KEY);
@@ -1618,6 +1624,10 @@ function decreaseStock(soldItems){
         item_id: it.id, qty: q,
         uid: 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2,7) + '_' + it.id,
         ts: new Date().toISOString(),
+        // Size sold (e.g. "Moyenne"/"Maxi"), if this is a variant product —
+        // lets a recipe-mode item deduct different ingredient quantities per
+        // size instead of one blended recipe for every size.
+        variant: it.variant || '',
       });
       console.log(`[STOCK] queuing delta item=${it.id} qty=${q} newLocalStock=${stock[it.id]}`);
     }
@@ -3205,6 +3215,14 @@ async function loginSuccess(role){
     if(tblPins)       tblPins.style.display='none';
     if(tblCloturer)   tblCloturer.style.display='';
   }
+  const creditsBtn = document.getElementById('btn-credits');
+  if(creditsBtn) creditsBtn.style.display = isCreditEnabled() ? '' : 'none';
+  const tblCreditsBtn = document.getElementById('tbl-btn-credits');
+  if(tblCreditsBtn) tblCreditsBtn.style.display = isCreditEnabled() ? '' : 'none';
+  const creditPayBtn = document.getElementById('p-credit');
+  if(creditPayBtn) creditPayBtn.style.display = isCreditEnabled() ? '' : 'none';
+  const cardPayBtn = document.getElementById('p-card');
+  if(cardPayBtn) cardPayBtn.style.display = isCardEnabled() ? '' : 'none';
   // Reset session badge
   document.getElementById('session-badge-hdr').style.display='none';
   currentSession = null;

@@ -1,5 +1,5 @@
 {
-  "name": "servio-pos",
+  "name": "servio-coffee-more",
   "version": "1.1.0",
   "description": "ServioOS — Système de caisse POS multi-client",
   "main": "core/main.js",
@@ -11,7 +11,8 @@
     "start:mio_food": "set CLIENT_DIR=clients/mio_food&& electron .",
     "build:win": "electron-builder --win --x64",
     "build:portable": "electron-builder --win portable --x64",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "new-client": "node tools/new-client/server.mjs"
   },
   "dependencies": {
     "sql.js": "^1.13.0"
@@ -22,12 +23,12 @@
     "sharp": "^0.35.3"
   },
   "build": {
-    "appId": "tn.servio.pos.cafeina",
-    "productName": "Cafeina POS",
+    "appId": "tn.servio.pos.coffee_more",
+    "productName": "Coffee More POS",
     "copyright": "© 2025 Servio OS",
     "asar": true,
     "directories": {
-      "output": "dist_clients/Cafeina_DELIVERY"
+      "output": "dist_clients/Coffee_More"
     },
     "files": [
       "core/main.js",
@@ -70,12 +71,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Cafeina POS",
+      "shortcutName": "Coffee More POS",
       "runAfterFinish": true,
-      "artifactName": "Cafeina_Setup.exe"
+      "artifactName": "Coffee_More_Setup.exe"
     },
     "portable": {
-      "artifactName": "Cafeina_Portable.exe"
+      "artifactName": "Coffee_More_Portable.exe"
     }
   }
 }
