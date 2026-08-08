@@ -4950,6 +4950,10 @@ function showWalletHistory(idx){
 // See app/api/me/online-orders/route.ts on the web side for the full contract.
 let onlineOrdersPending = [];
 let onlineOrdersUnpaid = [];
+// Accepted orders the kitchen hasn't finished yet — separate from unpaid on
+// purpose: paid and ready are independent (a kiosk order can be paid via
+// wallet before the food's done, or cooking long before anyone's paid).
+let onlineOrdersPreparing = [];
 // Set right before an unpaid online order's items are loaded into the cart
 // for checkout — read by autoPrintAll() to skip re-printing its kitchen
 // ticket and to auto-mark it paid once the sale actually completes.
@@ -4964,13 +4968,17 @@ async function pollOnlineOrders(){
     if(!data || !data.ok) return;
     onlineOrdersPending = Array.isArray(data.pending) ? data.pending : [];
     onlineOrdersUnpaid = Array.isArray(data.unpaid) ? data.unpaid : [];
+    onlineOrdersPreparing = Array.isArray(data.preparing) ? data.preparing : [];
     updateOnlineOrdersBadge();
   }catch(e){ /* offline — retried on next poll */ }
 }
 function updateOnlineOrdersBadge(){
   const b = document.getElementById('ooo-badge');
   if(!b) return;
-  const n = onlineOrdersPending.length + onlineOrdersUnpaid.length;
+  // unpaid and preparing overlap heavily (same order can need both a
+  // payment AND a ready-mark) — count distinct orders, not a naive sum.
+  const actionable = new Set([...onlineOrdersUnpaid.map(o=>String(o.id)), ...onlineOrdersPreparing.map(o=>String(o.id))]);
+  const n = onlineOrdersPending.length + actionable.size;
   b.textContent = n;
   b.style.display = n>0 ? '' : 'none';
 }
@@ -5015,13 +5023,35 @@ function showOnlineOrders(){
     </div>`;
   }).join('') : '';
 
+  const preparingRows = onlineOrdersPreparing.length ? onlineOrdersPreparing.map(o=>{
+    const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--div)">
+      <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel}${o.paid?' · <span style="color:var(--green)">payée</span>':''}</span>
+      <button onclick="markOnlineOrderReady(${o.id})" style="padding:6px 12px;background:var(--card);border:1px solid rgba(61,184,122,.4);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">✅ Marquer prêt</button>
+    </div>`;
+  }).join('') : '';
+
+  const preparingSection = onlineOrdersPreparing.length ? `
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid var(--div)">
+      <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:6px">🍳 En préparation (${onlineOrdersPreparing.length})</div>
+      ${preparingRows}
+    </div>` : '';
+
   const unpaidSection = onlineOrdersUnpaid.length ? `
     <div style="margin-top:14px;padding-top:10px;border-top:2px solid var(--div)">
       <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🧾 Non payées (${onlineOrdersUnpaid.length}) — en cuisine, en attente de règlement</div>
       ${unpaidRows}
     </div>` : '';
 
-  createSessionModal(`<div class="session-icon">🌐</div><div class="session-title">Commandes en ligne</div><div style="max-height:400px;overflow-y:auto">${rows}${unpaidSection}</div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
+  createSessionModal(`<div class="session-icon">🌐</div><div class="session-title">Commandes en ligne</div><div style="max-height:400px;overflow-y:auto">${rows}${preparingSection}${unpaidSection}</div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
+}
+async function markOnlineOrderReady(id){
+  const ok = await postOnlineOrderAction(id,'markReady');
+  if(!ok){ flash('⚠ Impossible de marquer prête — réessayez'); return; }
+  onlineOrdersPreparing = onlineOrdersPreparing.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+  flash('✓ Commande marquée prête');
+  showOnlineOrders();
 }
 async function postOnlineOrderAction(id, action){
   try{
@@ -5067,9 +5097,11 @@ async function acceptOnlineOrder(id){
   if(!ok){ flash("⚠ Impossible d'accepter — réessayez"); return; }
   printOnlineOrderKitchenTicket(order);
   onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
-  // Carry the full order (items included) straight into the unpaid list
-  // locally — don't wait for the next poll, so "🧾 Encaisser" works right away.
+  // Carry the full order straight into both the unpaid AND preparing lists
+  // locally — don't wait for the next poll, so "🧾 Encaisser" and
+  // "✅ Marquer prêt" both work right away.
   onlineOrdersUnpaid = [...onlineOrdersUnpaid, order];
+  onlineOrdersPreparing = [...onlineOrdersPreparing, order];
   updateOnlineOrdersBadge();
   flash('✓ Envoyée en cuisine — '+order.client_name);
   showOnlineOrders();
