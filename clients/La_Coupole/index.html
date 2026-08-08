@@ -3279,12 +3279,16 @@ function encaisser(){
   decreaseStock(od.items);
   // ── background cloud sync (silent, never blocks the POS) ──
   syncSale(od);
+  // Must run BEFORE the print-checkbox branch — an online order's paid state
+  // is data, not a printing preference, and can't depend on a toggle staff
+  // may turn off for this one sale.
+  const wasOnlineOrder = finalizeOnlineOrderPayment();
   // 1) Client ticket — respect the "Imprimer ticket" toggle
   //    Checked  → show receipt window on screen + auto-print (drawer opens inside autoPrintAll)
   //    Unchecked → silent: NO save/receipt window, NO print; just open drawer for cash & go to next order
   if(document.getElementById('print-ticket-check')?.checked){
     showReceipt(od);
-    autoPrintAll(od);
+    autoPrintAll(od, wasOnlineOrder);
     // 2) Kitchen ticket(s) auto-print right after, queued inside autoPrintAll()
   } else {
     // Cash drawer already kicked early at the top of encaisser() (fire-and-forget).
@@ -3308,20 +3312,30 @@ function encaisser(){
 }
 
 // ═══════════════ AUTO PRINT (client ticket first, then kitchen ticket(s)) ═══════════════
-function autoPrintAll(od){
+// Resolves a pending online-order payment UNCONDITIONALLY — this must never
+// be gated behind the "Imprimer ticket" checkbox. It was originally called
+// only from inside autoPrintAll(), which only ran when that checkbox was
+// checked; unchecking it for a single sale (any cashier, any client, any
+// time — it's a live per-transaction toggle, not a fixed client setting)
+// meant the order never got marked paid AND the stale pendingOnlineOrderPayment
+// leaked into the NEXT unrelated sale, silently eating that sale's kitchen
+// ticket and mis-marking the wrong online order as paid. Called BEFORE the
+// print-checkbox branch in every checkout path so it always runs.
+function finalizeOnlineOrderPayment(){
+  if(!pendingOnlineOrderPayment) return false;
+  markOnlineOrderPaid(pendingOnlineOrderPayment.id, true);
+  pendingOnlineOrderPayment = null;
+  return true;
+}
+function autoPrintAll(od, skipKitchen){
   // Cash drawer is kicked early (fire-and-forget) at the top of encaisser(),
   // before the SQLite save — so it is intentionally NOT opened here.
   // Client ticket prints immediately and automatically — no manual click needed.
   doPrint();
-  if(pendingOnlineOrderPayment){
+  if(skipKitchen){
     // This sale is an online order being paid for at the counter — its
     // kitchen ticket already printed the moment staff hit "Accepter", so
-    // printing it again here would look like a duplicate order to the
-    // kitchen. Completing the sale (any payment method) IS "the customer
-    // paid" — mark it paid server-side now rather than relying on staff to
-    // remember a separate step.
-    markOnlineOrderPaid(pendingOnlineOrderPayment.id, true);
-    pendingOnlineOrderPayment = null;
+    // printing it again here would look like a duplicate order to the kitchen.
   } else {
     // Kitchen ticket(s) queued right after, staggered so the client ticket
     // reaches the printer first (see delays inside autoPrintKitchen). This is
@@ -4495,7 +4509,8 @@ function confirmCreditSale(idx){
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
   hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
-  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od); }
+  const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
+  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
   syncSale(od);
@@ -4905,7 +4920,8 @@ function confirmWalletSale(idx){
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
   hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
-  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od); }
+  const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
+  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
   syncSale(od);
