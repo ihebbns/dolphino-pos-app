@@ -2778,6 +2778,32 @@ function checkPin(){
     setTimeout(()=>{document.getElementById('pin-error').style.display='none';},2000);
   }
 }
+
+// ── RFID / NFC badge login (tap-to-login) ─────────────────────────────
+// A USB badge reader is just a keyboard: tapping a badge "types" its id very
+// fast wherever the cursor is focused, then sends Enter — no driver, no
+// special API. The PIN pad on this screen is tap-only (no physical typing
+// happens here normally), so any real keydown burst is either a badge scan
+// or a stray key; a scan is recognized once Enter arrives by matching the
+// buffered text against a user's assigned badge id, and logs that user in
+// directly — no PIN needed, same as the coffee-shop hardware this mirrors.
+let _badgeBuf='', _badgeLastAt=0;
+function handleBadgeKeydown(e){
+  const scr = document.getElementById('login-screen');
+  if(!scr || scr.style.display==='none') return;
+  const now = Date.now();
+  if(now - _badgeLastAt > 300) _badgeBuf=''; // gap too long for a scanner burst — restart
+  _badgeLastAt = now;
+  if(e.key==='Enter' || e.key==='Tab'){
+    const code = _badgeBuf; _badgeBuf='';
+    if(code.length < 4) return;
+    const uid = Object.keys(USERS).find(id => USERS[id].badge && USERS[id].badge===code);
+    if(uid){ e.preventDefault(); currentPinUser=uid; loginSuccess(uid); }
+    return;
+  }
+  if(e.key.length===1) _badgeBuf += e.key;
+}
+document.addEventListener('keydown', handleBadgeKeydown);
 // A correct PIN must never look like a dead button. hydrateBusinessState() below
 // reads today's sales out of SQLite so the ticket counter continues where it left
 // off — that cannot be skipped without risking two tickets sharing a number — but
@@ -4100,7 +4126,7 @@ function renderUserManager(){
       <div style="width:36px;height:36px;border-radius:50%;background:${u.bg||'rgba(74,144,217,.2)'};color:${u.color||'var(--blue)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${u.name.charAt(0)}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${u.name}</div>
-        <div style="font-size:10px;color:var(--muted);">${u.role} · PIN: ••••</div>
+        <div style="font-size:10px;color:var(--muted);">${u.role} · PIN: •••• ${u.badge?' · 🪪 Badge assigné':''}</div>
       </div>
       <button onclick="editUser('${id}')" style="padding:4px 10px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);cursor:pointer;font-size:11px;">✏️</button>
       ${id !== 'manager' ? `<button onclick="deleteUser('${id}')" style="padding:4px 10px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);cursor:pointer;font-size:11px;">✕</button>` : ''}
@@ -4119,6 +4145,7 @@ function renderUserManager(){
         <input id="new-user-name" placeholder="Nom" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;" autocomplete="off">
         <input id="new-user-pin" placeholder="PIN (4 chiffres)" maxlength="6" inputmode="numeric" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;text-align:center;" autocomplete="off">
       </div>
+      <input id="new-user-badge" placeholder="🪪 Badge RFID (optionnel) — cliquez ici puis approchez le badge" style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none;margin-bottom:6px;" autocomplete="off">
       <div style="display:flex;gap:6px;">
         <select id="new-user-role" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none;">
           <option value="Caissier">Caissier</option>
@@ -4132,16 +4159,24 @@ function renderUserManager(){
   `);
 }
 
+// A badge reader is just a USB "keyboard" that types the tag's id wherever the
+// cursor is focused, then Enter — so capturing one needs no special API, only
+// a normal text input the manager clicks into before tapping the badge.
+function badgeAlreadyTaken(code, exceptId){
+  return Object.entries(USERS).some(([id,u]) => id!==exceptId && u.badge && u.badge===code);
+}
 function addUser(){
   const name = (document.getElementById('new-user-name')?.value||'').trim();
   const pin = (document.getElementById('new-user-pin')?.value||'').trim();
+  const badge = (document.getElementById('new-user-badge')?.value||'').trim();
   const role = document.getElementById('new-user-role')?.value||'Caissier';
   if(!name){ alert('Nom requis'); return; }
   if(!/^\d{4,6}$/.test(pin)){ alert('PIN invalide — 4 à 6 chiffres'); return; }
+  if(badge && badgeAlreadyTaken(badge)){ alert('Ce badge est déjà assigné à un autre utilisateur'); return; }
   const id = name.toLowerCase().replace(/[^a-z0-9]/g,'_');
   if(USERS[id]){ alert('Cet utilisateur existe déjà'); return; }
   const isManager = role === 'Manager';
-  USERS[id] = { pin, name, role, color: isManager?'var(--gold-l)':'var(--blue)', bg: isManager?'rgba(200,145,58,.2)':'rgba(74,144,217,.2)', letter: name.charAt(0), isManager };
+  USERS[id] = { pin, name, role, badge, color: isManager?'var(--gold-l)':'var(--blue)', bg: isManager?'rgba(200,145,58,.2)':'rgba(74,144,217,.2)', letter: name.charAt(0), isManager };
   saveUsersToStorage();
   renderUserManager();
   renderLoginUsers();
@@ -4163,6 +4198,11 @@ function editUser(id){
       <label>PIN (4-6 chiffres)</label>
       <input class="session-inp" type="text" id="edit-user-pin" value="${u.pin}" maxlength="6" inputmode="numeric" autocomplete="off" style="font-size:16px;">
     </div>
+    <div class="session-input-row">
+      <label>🪪 Badge RFID (optionnel)</label>
+      <input class="session-inp" type="text" id="edit-user-badge" value="${u.badge||''}" placeholder="Cliquez ici puis approchez le badge" autocomplete="off" style="font-size:14px;">
+      ${u.badge?`<div style="font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer" onclick="document.getElementById('edit-user-badge').value=''">✕ Retirer le badge</div>`:''}
+    </div>
     <button class="btn-session-open" onclick="confirmEditUser('${id}')" style="margin-top:8px">✓ Enregistrer</button>
     <button class="mcancel" style="margin-top:8px" onclick="cancelEditUser()">Annuler</button>
   `);
@@ -4171,10 +4211,13 @@ function editUser(id){
 function confirmEditUser(id){
   const newName = document.getElementById('edit-user-name')?.value?.trim();
   const newPin = document.getElementById('edit-user-pin')?.value?.trim();
+  const newBadge = document.getElementById('edit-user-badge')?.value?.trim()||'';
   if(!newName){ flash('Nom requis'); return; }
   if(!/^\d{4,6}$/.test(newPin||'')){ flash('PIN invalide — 4 a 6 chiffres'); return; }
+  if(newBadge && badgeAlreadyTaken(newBadge, id)){ flash('Ce badge est déjà assigné à un autre utilisateur'); return; }
   USERS[id].name = newName;
   USERS[id].pin = newPin;
+  USERS[id].badge = newBadge;
   USERS[id].letter = newName.charAt(0);
   saveUsersToStorage();
   renderLoginUsers();
@@ -4749,14 +4792,23 @@ async function _sendWalletsLocked(){
 function flushWalletsPush(){ if(SYNC_ENABLED) sendWallets(); }
 
 // ── Manager screen: list, recharge, history, new card ──────────────────
+// Creating a card and recharging it both move real money onto a balance that
+// can later be spent — same trust level as opening the cash drawer outside a
+// sale, so both are Manager-only. A cashier can still look up a card, spend
+// from it at checkout, and print its history; only "make more money exist on
+// a card" is gated. Guarded here (not just hidden) so it can't be reached by
+// calling the function directly either.
 function showWalletManager(){
   const wallets=loadWallets();
   const active=wallets.map((c,i)=>({c,i})).filter(x=>!x.c.archived);
   const totalSolde=active.reduce((a,x)=>a+x.c.balance,0);
-  const rows=active.length?active.map(({c,i})=>`<div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--div)"><div style="width:28px;height:28px;border-radius:50%;background:rgba(245,158,11,.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${c.name.charAt(0)}</div><div style="flex:1"><div style="font-size:12px;font-weight:600">${c.name}</div><div style="font-size:10px;color:var(--muted)">${c.phone||'—'}</div></div><div style="font-size:14px;font-weight:700;color:${c.balance>0?'var(--green)':'var(--muted)'}">${f(c.balance)}</div><button onclick="showWalletRecharge(${i})" style="padding:4px 8px;background:var(--gold);border:none;border-radius:5px;color:#080604;font-size:10px;font-weight:700;cursor:pointer">+ Recharger</button><button onclick="showWalletHistory(${i})" style="padding:4px 8px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);font-size:10px;cursor:pointer">📋</button><button onclick="deleteWalletClient(${i})" style="padding:4px 8px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);font-size:10px;cursor:pointer">🗑️</button></div>`).join(''):'<div style="text-align:center;color:var(--muted);padding:20px">Aucune carte</div>';
-  createSessionModal(`<div class="session-icon">💳</div><div class="session-title">Cartes de fidélité</div><div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">${active.length} clients · Solde total: <strong style="color:var(--green)">${f(totalSolde)} DT</strong></div><div style="max-height:260px;overflow-y:auto">${rows}</div><div style="border-top:1px solid var(--div);padding-top:12px;margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:6px"><input id="wallet-new-name" placeholder="Nom client" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none" autocomplete="off"><input id="wallet-new-phone" placeholder="Tel" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none" autocomplete="off"></div><button onclick="createWalletClient()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:7px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">+ Nouvelle carte</button></div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
+  const canManage=!!USERS[currentUser]?.isManager;
+  const rows=active.length?active.map(({c,i})=>`<div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--div)"><div style="width:28px;height:28px;border-radius:50%;background:rgba(245,158,11,.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${c.name.charAt(0)}</div><div style="flex:1"><div style="font-size:12px;font-weight:600">${c.name}</div><div style="font-size:10px;color:var(--muted)">${c.phone||'—'}</div></div><div style="font-size:14px;font-weight:700;color:${c.balance>0?'var(--green)':'var(--muted)'}">${f(c.balance)}</div>${canManage?`<button onclick="showWalletRecharge(${i})" style="padding:4px 8px;background:var(--gold);border:none;border-radius:5px;color:#080604;font-size:10px;font-weight:700;cursor:pointer">+ Recharger</button>`:''}<button onclick="showWalletHistory(${i})" style="padding:4px 8px;background:var(--card);border:1px solid var(--div);border-radius:5px;color:var(--muted);font-size:10px;cursor:pointer">📋</button>${canManage?`<button onclick="deleteWalletClient(${i})" style="padding:4px 8px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:5px;color:var(--red);font-size:10px;cursor:pointer">🗑️</button>`:''}</div>`).join(''):'<div style="text-align:center;color:var(--muted);padding:20px">Aucune carte</div>';
+  const createBlock=canManage?`<div style="border-top:1px solid var(--div);padding-top:12px;margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:6px"><input id="wallet-new-name" placeholder="Nom client" style="flex:1;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:13px;outline:none" autocomplete="off"><input id="wallet-new-phone" placeholder="Tel" style="width:100px;background:var(--card);border:1px solid var(--div);border-radius:6px;padding:8px;color:var(--txt);font-size:12px;outline:none" autocomplete="off"></div><button onclick="createWalletClient()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:7px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">+ Nouvelle carte</button></div>`:`<div style="text-align:center;color:var(--muted);font-size:10px;padding-top:12px;margin-top:8px;border-top:1px solid var(--div)">Création et recharge réservées au Manager</div>`;
+  createSessionModal(`<div class="session-icon">💳</div><div class="session-title">Cartes de fidélité</div><div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">${active.length} clients · Solde total: <strong style="color:var(--green)">${f(totalSolde)} DT</strong></div><div style="max-height:260px;overflow-y:auto">${rows}</div>${createBlock}<button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
 }
 function createWalletClient(){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
   const name=document.getElementById('wallet-new-name')?.value?.trim();
   const phone=document.getElementById('wallet-new-phone')?.value?.trim()||'';
   if(!name){flash('Nom requis');return;}
@@ -4765,6 +4817,7 @@ function createWalletClient(){
   showWalletManager();
 }
 function deleteWalletClient(idx){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
   const wallets=loadWallets();const c=wallets[idx];if(!c)return;
   if(c.balance>0){
     if(!confirm('⚠️ Ce client a encore '+f(c.balance)+' DT de solde !\nVoulez-vous vraiment supprimer sa carte ?'))return;
@@ -4784,6 +4837,7 @@ function deleteWalletClient(idx){
 
 // ── Recharge (+30% bonus) ───────────────────────────────────────────────
 function showWalletRecharge(idx){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
   const wallets=loadWallets();const c=wallets[idx];if(!c)return;
   createSessionModal(`<div class="session-icon">📥</div><div class="session-title">Recharge — ${c.name}</div><div class="session-sub">Solde actuel: <strong style="color:var(--green)">${f(c.balance)} DT</strong></div><div class="session-input-row"><label>Montant reçu du client (DT)</label><input class="session-inp" type="number" id="wallet-recharge-amount" placeholder="0.000" step="0.5" inputmode="decimal" autocomplete="off" onfocus="this.select()" oninput="updateWalletRechargePreview()"></div><div id="wallet-recharge-preview" style="font-size:12px;color:var(--gold);margin:-6px 0 10px;font-weight:600">Sera crédité : 0.000 DT (bonus +${Math.round(WALLET_TOPUP_BONUS*100)}%)</div><button class="btn-session-open" onclick="confirmWalletRecharge(${idx})" style="margin-top:8px">✓ Encaisser & créditer</button><button class="mcancel" style="margin-top:8px" onclick="showWalletManager()">← Retour</button>`);
   setTimeout(()=>{document.getElementById('wallet-recharge-amount')?.focus();},100);
@@ -4795,6 +4849,7 @@ function updateWalletRechargePreview(){
   if(el) el.textContent='Sera crédité : '+f(credited)+' DT (bonus +'+Math.round(WALLET_TOPUP_BONUS*100)+'%)';
 }
 function confirmWalletRecharge(idx){
+  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
   const wallets=loadWallets();const c=wallets[idx];if(!c)return;
   const amount=parseFloat(document.getElementById('wallet-recharge-amount')?.value)||0;
   if(amount<=0){flash('Montant invalide');return;}
