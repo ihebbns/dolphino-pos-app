@@ -4868,6 +4868,11 @@ function showWalletHistory(idx){
 // (stock deduction, kitchen tickets, receipt) as an order typed by hand —
 // see app/api/me/online-orders/route.ts on the web side for the full contract.
 let onlineOrdersPending = [];
+// Accepted orders (kitchen already has them) that haven't been paid at the
+// counter yet — orders never carry a payment step at submission (phone or
+// kiosk), so this is the till's own reminder list, separate from accept/
+// reject status, until a cashier checks "Payée" once cash/card is settled.
+let onlineOrdersUnpaid = [];
 async function pollOnlineOrders(){
   if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
   try{
@@ -4877,13 +4882,14 @@ async function pollOnlineOrders(){
     const data = await res.json();
     if(!data || !data.ok) return;
     onlineOrdersPending = Array.isArray(data.pending) ? data.pending : [];
+    onlineOrdersUnpaid = Array.isArray(data.unpaid) ? data.unpaid : [];
     updateOnlineOrdersBadge();
   }catch(e){ /* offline — retried on next poll */ }
 }
 function updateOnlineOrdersBadge(){
   const b = document.getElementById('ooo-badge');
   if(!b) return;
-  const n = onlineOrdersPending.length;
+  const n = onlineOrdersPending.length + onlineOrdersUnpaid.length;
   b.textContent = n;
   b.style.display = n>0 ? '' : 'none';
 }
@@ -4904,8 +4910,26 @@ function showOnlineOrders(){
         <button onclick="rejectOnlineOrder(${o.id})" style="padding:8px 12px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:6px;color:var(--red);font-size:12px;cursor:pointer">✕ Refuser</button>
       </div>
     </div>`;
-  }).join('') : '<div style="text-align:center;color:var(--muted);padding:20px">Aucune commande en attente</div>';
-  createSessionModal(`<div class="session-icon">🌐</div><div class="session-title">Commandes en ligne</div><div style="max-height:340px;overflow-y:auto">${rows}</div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
+  }).join('') : '<div style="text-align:center;color:var(--muted);padding:16px">Aucune commande en attente</div>';
+
+  const unpaidRows = onlineOrdersUnpaid.length ? onlineOrdersUnpaid.map(o=>{
+    const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--div)">
+      <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer" onclick="markOnlineOrderPaid(${o.id})">
+        <input type="checkbox" style="width:18px;height:18px;cursor:pointer">
+        <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel} · ${o.client_phone||'—'}</span>
+      </label>
+      <span style="font-size:12px;font-weight:700;color:var(--red)">${f(o.total)} DT</span>
+    </div>`;
+  }).join('') : '';
+
+  const unpaidSection = onlineOrdersUnpaid.length ? `
+    <div style="margin-top:14px;padding-top:10px;border-top:2px solid var(--div)">
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🧾 Non payées (${onlineOrdersUnpaid.length}) — cochez une fois réglée</div>
+      ${unpaidRows}
+    </div>` : '';
+
+  createSessionModal(`<div class="session-icon">🌐</div><div class="session-title">Commandes en ligne</div><div style="max-height:400px;overflow-y:auto">${rows}${unpaidSection}</div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
 }
 async function postOnlineOrderAction(id, action){
   try{
@@ -4917,6 +4941,14 @@ async function postOnlineOrderAction(id, action){
     const data = await res.json();
     return !!(data && data.ok);
   }catch(e){ return false; }
+}
+async function markOnlineOrderPaid(id){
+  const ok = await postOnlineOrderAction(id,'markPaid');
+  if(!ok){ flash('⚠ Impossible de marquer payée — réessayez'); return; }
+  onlineOrdersUnpaid = onlineOrdersUnpaid.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+  flash('✓ Commande marquée payée');
+  showOnlineOrders();
 }
 async function acceptOnlineOrder(id){
   // o.id comes back as a STRING from the server (online_orders.id is BIGSERIAL —
