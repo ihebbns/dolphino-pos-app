@@ -18,6 +18,15 @@ SERVIO_CREDENTIALS.txt
 .env
 .env.local
 
+# Per-client fiches/licences (clients/<Name>/FICHE_CLIENT.txt,
+# clients/<Name>/LICENCE_<NAME>.txt) — each one has that client's real
+# dashboard password, PINs, API key, and the shared Servio admin key in
+# plaintext. Both repos this project lives in are public GitHub repos —
+# these must only ever exist on this machine.
+FICHE_CLIENT*.txt
+LICENCE_*.txt
+LICENSE_*.txt
+
 # ── Scratch / throwaway tooling ────────────────────────────────
 _scratch_*.txt
 _*.cjs
