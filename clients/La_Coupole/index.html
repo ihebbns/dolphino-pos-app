@@ -409,6 +409,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     </div>
     <button class="hdr-btn" id="btn-credits" onclick="showCreditManager()">📒 Crédits</button>
     <button class="hdr-btn" id="btn-wallet" onclick="showWalletManager()">💳 Fidélité</button>
+    <button class="hdr-btn" id="btn-online-orders" onclick="showOnlineOrders()">🌐 Commandes<span id="ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn hdr-icon" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
@@ -1283,6 +1284,9 @@ function isCreditEnabled(){
 function isWalletEnabled(){
   return !(CLIENT_CONFIG.modules && CLIENT_CONFIG.modules.wallet === false);
 }
+function isOnlineOrdersEnabled(){
+  return !(CLIENT_CONFIG.modules && CLIENT_CONFIG.modules.onlineOrders === false);
+}
 // Re-run after login AND after checkLicense() applies a fresh CLIENT_CONFIG.modules
 // from the server, so an admin flipping a module on the web takes effect on this
 // till without a rebuild — next launch (or next 30-min check), not instantly.
@@ -1295,6 +1299,8 @@ function applyModuleVisibility(){
   if(walletBtn) walletBtn.style.display = isWalletEnabled() ? '' : 'none';
   const walletPayBtn = document.getElementById('p-wallet');
   if(walletPayBtn) walletPayBtn.style.display = isWalletEnabled() ? '' : 'none';
+  const onlineOrdersBtn = document.getElementById('btn-online-orders');
+  if(onlineOrdersBtn) onlineOrdersBtn.style.display = isOnlineOrdersEnabled() ? '' : 'none';
 }
 const STOCK_MODULE_KEY = 'servio-stock-module-v1';
 function isStockEnabled(){
@@ -4855,6 +4861,96 @@ function showWalletHistory(idx){
   createSessionModal(`<div class="session-icon">📋</div><div class="session-title">${c.name}</div><div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">Solde: <strong style="color:var(--green)"> ${f(c.balance)} DT</strong></div><div style="max-height:300px;overflow-y:auto">${rows}</div><button class="mcancel" style="margin-top:12px" onclick="showWalletManager()">← Retour</button>`);
 }
 
+// ═══════════════ ONLINE ORDERS (public ordering page → till queue) ═══════
+// Staff-driven only: a customer's public order lands as 'pending' server-side
+// and never auto-completes. "Accepter" loads the order's items into this
+// till's normal cart so the sale goes through the EXACT same encaisser() path
+// (stock deduction, kitchen tickets, receipt) as an order typed by hand —
+// see app/api/me/online-orders/route.ts on the web side for the full contract.
+let onlineOrdersPending = [];
+async function pollOnlineOrders(){
+  if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/online-orders') + '?key=' + SYNC_API_KEY, {
+      headers: { 'X-Api-Key': SYNC_API_KEY }
+    });
+    const data = await res.json();
+    if(!data || !data.ok) return;
+    onlineOrdersPending = Array.isArray(data.pending) ? data.pending : [];
+    updateOnlineOrdersBadge();
+  }catch(e){ /* offline — retried on next poll */ }
+}
+function updateOnlineOrdersBadge(){
+  const b = document.getElementById('ooo-badge');
+  if(!b) return;
+  const n = onlineOrdersPending.length;
+  b.textContent = n;
+  b.style.display = n>0 ? '' : 'none';
+}
+function showOnlineOrders(){
+  const rows = onlineOrdersPending.length ? onlineOrdersPending.map(o=>{
+    const its = (o.items_json||[]).map(it=>`${it.qty}× ${it.name}${it.variant?' ('+it.variant+')':''}`).join(', ');
+    const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+    return `<div style="padding:10px;border-bottom:1px solid var(--div)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:700">${o.client_name}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--green)">${f(o.total)} DT</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px">${typeLabel} · ${o.client_phone||'—'}</div>
+      <div style="font-size:11px;margin-bottom:8px">${its}</div>
+      ${o.note?`<div style="font-size:10px;color:var(--gold);margin-bottom:8px">📝 ${o.note}</div>`:''}
+      <div style="display:flex;gap:6px">
+        <button onclick="acceptOnlineOrder(${o.id})" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✓ Accepter</button>
+        <button onclick="rejectOnlineOrder(${o.id})" style="padding:8px 12px;background:none;border:1px solid rgba(224,82,82,.3);border-radius:6px;color:var(--red);font-size:12px;cursor:pointer">✕ Refuser</button>
+      </div>
+    </div>`;
+  }).join('') : '<div style="text-align:center;color:var(--muted);padding:20px">Aucune commande en attente</div>';
+  createSessionModal(`<div class="session-icon">🌐</div><div class="session-title">Commandes en ligne</div><div style="max-height:340px;overflow-y:auto">${rows}</div><button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>`);
+}
+async function postOnlineOrderAction(id, action){
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/online-orders'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: SYNC_API_KEY, action, order_id: id, actor: USERS[currentUser]?.name||'' })
+    });
+    const data = await res.json();
+    return !!(data && data.ok);
+  }catch(e){ return false; }
+}
+async function acceptOnlineOrder(id){
+  // o.id comes back as a STRING from the server (online_orders.id is BIGSERIAL —
+  // Neon's driver stringifies bigints to avoid JS precision loss), while `id`
+  // here is a numeric literal from the onclick handler — compare as strings.
+  const order = onlineOrdersPending.find(o=>String(o.id)===String(id));
+  if(!order) return;
+  if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')) return;
+  const ok = await postOnlineOrderAction(id,'accept');
+  if(!ok){ flash("⚠ Impossible d'accepter — réessayez"); return; }
+  items = (order.items_json||[]).map(it=>({
+    key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
+    variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat:''
+  }));
+  disc=0; payMode='cash';
+  setType(order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'));
+  cliName = order.client_name||''; cliTel = order.client_phone||'';
+  const cn=document.getElementById('cli-name'), ct=document.getElementById('cli-tel');
+  if(cn) cn.value=cliName; if(ct) ct.value=cliTel;
+  renderOrd(); saveState();
+  destroySessionModal();
+  flash('✓ Commande de '+cliName+' chargée — encaissez normalement');
+  onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+}
+async function rejectOnlineOrder(id){
+  if(!confirm('Refuser cette commande ?')) return;
+  const ok = await postOnlineOrderAction(id,'reject');
+  if(!ok){ flash('⚠ Impossible de refuser — réessayez'); return; }
+  onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+  showOnlineOrders();
+}
+
 // ═══════════════ UTILS ═══════════════
 function f(n){return Number(n).toFixed(3);}
 function flash(m){const el=document.getElementById('stm');if(el){el.textContent=m;setTimeout(()=>{el.textContent='✓ Prêt';},2500);}}
@@ -4922,6 +5018,14 @@ if(SYNC_ENABLED){
 if(SYNC_ENABLED){
   setTimeout(()=>{ try{ pullCloudWallets(); }catch(e){} }, 9000);
   setInterval(()=>{ try{ pullCloudWallets(); }catch(e){} }, 30 * 60 * 1000);
+}
+
+// ── Poll the till's online-order queue (offline-safe) ──
+// Faster cadence than the other pulls — a customer waiting on the public
+// ordering page expects a response within a minute, not half an hour.
+if(SYNC_ENABLED){
+  setTimeout(()=>{ try{ pollOnlineOrders(); }catch(e){} }, 6000);
+  setInterval(()=>{ try{ pollOnlineOrders(); }catch(e){} }, 25000);
 }
 
 // ── Publish POS-owned menu + prices upward (offline-safe) ──
