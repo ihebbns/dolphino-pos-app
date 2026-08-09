@@ -5902,7 +5902,7 @@ function showOnlineOrders(){
     return `<div style="padding:10px;border-bottom:1px solid var(--div)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div style="font-size:13px;font-weight:700">${o.client_name}</div>
-        <div style="font-size:13px;font-weight:700;color:var(--green)">${f(o.total)} DT</div>
+        <div style="font-size:13px;font-weight:700;color:var(--green)">${f(o.total)} DT${o.paid?' <span style="font-size:9px;color:var(--gold-l);font-weight:700">💳 PAYÉE</span>':''}</div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-bottom:6px">${typeLabel} · ${o.client_phone||'—'}</div>
       <div style="font-size:11px;margin-bottom:8px">${its}</div>
@@ -6080,6 +6080,14 @@ async function acceptOnlineOrder(id){
       '<button class="mcancel" onclick="destroySessionModal();showOnlineOrders()">← Retour aux commandes</button>'
     );
     return;
+  } else if(order.paid){
+    // Customer already paid online with their wallet balance (see
+    // /api/public/[slug]/order's payMethod:'wallet') — the money already
+    // moved before this order ever reached the till. Routing it into
+    // onlineOrdersUnpaid too would offer "🧾 Encaisser" for money that's
+    // already been collected, which is exactly the double-charge shape
+    // the whole paid/unpaid split exists to prevent.
+    onlineOrdersPreparing = [...onlineOrdersPreparing, order];
   } else {
     // Carry the full order straight into both the unpaid AND preparing lists
     // locally — don't wait for the next poll, so "🧾 Encaisser" and
@@ -6088,7 +6096,7 @@ async function acceptOnlineOrder(id){
     onlineOrdersPreparing = [...onlineOrdersPreparing, order];
   }
   updateOnlineOrdersBadge();
-  flash('✓ Envoyée en cuisine — '+order.client_name);
+  flash(order.paid ? '✓ Envoyée en cuisine (payée par fidélité) — '+order.client_name : '✓ Envoyée en cuisine — '+order.client_name);
   showOnlineOrders();
 }
 async function encaisserOnlineOrder(id){
@@ -7132,6 +7140,10 @@ window.tblPrintAddition = function(){
   saveTables();
   updateTblBar();
   flash('📄 Addition imprimée — Table '+tbl.num);
+  // Printing the bill is normally the last thing a cashier does at this
+  // table before moving on — same "return to the floor plan" behavior as
+  // tapping the 🍽️ Tables button, just automatic here instead of a second tap.
+  if(typeof showTblOverlay==='function') showTblOverlay();
 };
 
 window.tblAddTableModal = function(){

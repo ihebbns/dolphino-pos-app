@@ -417,6 +417,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
     <button class="hdr-btn" id="btn-credits" onclick="showCreditManager()">📒 Crédits</button>
     <button class="hdr-btn" id="btn-wallet" onclick="showWalletManager()">💳 Fidélité</button>
     <button class="hdr-btn" id="btn-online-orders" onclick="showOnlineOrders()">🌐 Commandes<span id="ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
+    <button class="hdr-btn" onclick="showKdsOverlay()">🖥️ Cuisine<span id="kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn" onclick="showHistorique()">📋 Historique</button>
     <div class="session-badge-hdr" id="session-badge-hdr" style="display:none">✓ <span id="session-fond-display">—</span></div>
     <button class="hdr-btn hdr-icon" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
@@ -610,6 +611,20 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 
     <button class="mcancel" onclick="document.getElementById('menu-manage-modal').style.display='none'">Fermer</button>
   </div>
+</div>
+
+<div id="kds-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:200;flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--div);background:var(--card)">
+    <div style="font-size:16px;font-weight:800;color:var(--gold-l)">🖥️ Écran Cuisine</div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span id="kds-count" style="font-size:12px;color:var(--muted)"></span>
+      <button class="hdr-btn" onclick="hideKdsOverlay()">✕ Fermer</button>
+    </div>
+  </div>
+  <!-- Each physical station (bar, cuisine) can leave this screen open
+       filtered to only ITS zone — one device per station. -->
+  <div id="kds-zone-tabs" style="display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--div);flex-wrap:wrap"></div>
+  <div id="kds-grid" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start"></div>
 </div>
 
 <!-- PRINT AREA -->
@@ -3386,6 +3401,149 @@ const BOISSON_CATS= CLIENT_CONFIG.boissonCats;
 const ZONE1_LABEL = CLIENT_CONFIG.zone1Label;
 const ZONE2_LABEL = CLIENT_CONFIG.zone2Label;
 
+// ═══════════════ KITCHEN DISPLAY SCREEN (KDS) ═══════════════
+// A live work queue for the kitchen, separate from the printed paper
+// ticket — a printed ticket can get lost, buried, or ignored; this gives
+// staff (or a screen propped up in the kitchen) a glanceable "what's
+// outstanding, how long has it been waiting" view with a bump-to-clear
+// action. Fed by the SAME zone split as the printed tickets (see the
+// kdsAddTicket calls inside autoPrintKitchen below).
+var KDS_KEY = 'servio-kds-tickets-v1';
+var _kdsTickets = JSON.parse(localStorage.getItem(KDS_KEY) || '[]');
+if(!Array.isArray(_kdsTickets)) _kdsTickets = [];
+var _kdsTimer = null;
+
+function saveKdsTickets(){ try{ localStorage.setItem(KDS_KEY, JSON.stringify(_kdsTickets)); }catch(e){} }
+
+function kdsAddTicket(od, zoneItems, zoneLabel, zoneKey){
+  if(!zoneItems || !zoneItems.length) return;
+  _kdsTickets.push({
+    id: 'k'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    num: od.num, cliName: od.cliName||'',
+    zone: zoneKey, zoneLabel: zoneLabel,
+    items: zoneItems.map(function(it){ return {name:it.name, qty:it.qty, variant:it.variant||'', note:it.note||''}; }),
+    sentAt: Date.now(), bumped:false, bumpedAt:null,
+  });
+  var cutoff = Date.now() - 24*3600*1000;
+  _kdsTickets = _kdsTickets.filter(function(t){ return !t.bumped || t.bumpedAt > cutoff; });
+  saveKdsTickets();
+  updateKdsBadge();
+  var overlay = document.getElementById('kds-overlay');
+  if(overlay && overlay.style.display!=='none') renderKdsScreen();
+}
+
+function kdsElapsedMinutes(sentAt){ return Math.max(0, Math.floor((Date.now()-sentAt)/60000)); }
+function kdsUrgencyColor(mins){
+  if(mins >= 12) return 'var(--red)';
+  if(mins >= 6) return 'var(--orange)';
+  return 'var(--green)';
+}
+
+function updateKdsBadge(){
+  var n = _kdsTickets.filter(function(t){ return !t.bumped; }).length;
+  var b = document.getElementById('kds-badge');
+  if(!b) return;
+  b.textContent = n;
+  b.style.display = n>0 ? '' : 'none';
+}
+
+// Lets one physical screen sit filtered to just one zone — each station
+// only cares about its own tickets, not the whole board.
+var _kdsZoneFilter = 'all';
+function _kdsZoneList(){ return [{key:'zone1', label:ZONE1_LABEL}, {key:'zone2', label:ZONE2_LABEL}]; }
+window.setKdsZoneFilter = function(zone){
+  _kdsZoneFilter = zone;
+  renderKdsZoneTabs();
+  renderKdsScreen();
+};
+function renderKdsZoneTabs(){
+  var el = document.getElementById('kds-zone-tabs');
+  if(!el) return;
+  var zones = _kdsZoneList();
+  if(zones.length < 2){ el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display = 'flex';
+  var tabs = [{key:'all', label:'Tout'}].concat(zones);
+  el.innerHTML = tabs.map(function(z){
+    var active = _kdsZoneFilter===z.key;
+    return '<button onclick="window.setKdsZoneFilter(\''+z.key+'\')" style="padding:6px 14px;border-radius:20px;border:1px solid '+(active?'var(--gold)':'var(--div)')+';background:'+(active?'var(--gold)':'var(--card)')+';color:'+(active?'#080604':'var(--muted)')+';font-size:12px;font-weight:700;cursor:pointer">'+z.label+'</button>';
+  }).join('');
+}
+
+window.showKdsOverlay = function(){
+  var el = document.getElementById('kds-overlay');
+  if(!el) return;
+  el.style.display = 'flex';
+  renderKdsZoneTabs();
+  renderKdsScreen();
+  if(_kdsTimer) clearInterval(_kdsTimer);
+  _kdsTimer = setInterval(renderKdsScreen, 20000);
+};
+window.hideKdsOverlay = function(){
+  var el = document.getElementById('kds-overlay');
+  if(el) el.style.display = 'none';
+  if(_kdsTimer){ clearInterval(_kdsTimer); _kdsTimer = null; }
+};
+
+// Same server call as markOnlineOrderReady, but silent — used when the KDS
+// bump itself is what proved the order's ready (see kdsBump below), which
+// can fire while a cashier is mid-checkout on a completely different sale.
+// Popping the "Commandes en ligne" modal open under them would be
+// disruptive; the kds-badge/next poll is the correct place for this to surface.
+async function _kdsMarkOnlineOrderReadySilent(id){
+  const ok = await postOnlineOrderAction(id,'markReady');
+  if(!ok) return;
+  onlineOrdersPreparing = onlineOrdersPreparing.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+}
+
+window.kdsBump = function(id){
+  var t = _kdsTickets.find(function(x){ return x.id===id; });
+  if(!t) return;
+  t.bumped = true; t.bumpedAt = Date.now();
+  saveKdsTickets();
+  updateKdsBadge();
+  renderKdsScreen();
+  // Every ticket for this order-num bumped → nothing still cooking. Only
+  // matters for real online orders (num tagged 'WEB007' by
+  // printOnlineOrderKitchenTicket) — a regular in-store sale's ticket has
+  // nothing waiting on it once bumped.
+  var stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.num===t.num; });
+  var realId = (typeof t.num==='string' && t.num.slice(0,3)==='WEB') ? parseInt(t.num.slice(3),10) : null;
+  if(!stillPending && realId && typeof _kdsMarkOnlineOrderReadySilent==='function'){
+    _kdsMarkOnlineOrderReadySilent(realId);
+  }
+};
+
+window.renderKdsScreen = function(){
+  var grid = document.getElementById('kds-grid');
+  var countEl = document.getElementById('kds-count');
+  if(!grid) return;
+  var pending = _kdsTickets.filter(function(t){ return !t.bumped && (_kdsZoneFilter==='all' || t.zone===_kdsZoneFilter); }).sort(function(a,b){ return a.sentAt-b.sentAt; });
+  if(countEl) countEl.textContent = pending.length+' bon(s) en attente';
+  if(!pending.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 20px;font-size:14px">✓ Aucun bon en attente — cuisine à jour</div>';
+    return;
+  }
+  grid.innerHTML = pending.map(function(t){
+    var mins = kdsElapsedMinutes(t.sentAt);
+    var color = kdsUrgencyColor(mins);
+    var label = 'Commande #'+String(t.num||0).padStart(3,'0');
+    var itemsHtml = t.items.map(function(it){
+      return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px"><span>'+it.qty+'x '+it.name+(it.variant?(' ('+it.variant+')'):'')+'</span></div>'+
+        (it.note?('<div style="font-size:11px;color:var(--orange);padding-left:8px">↳ '+it.note+'</div>'):'');
+    }).join('');
+    return '<div style="background:var(--card);border:1px solid var(--div);border-left:4px solid '+color+';border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'+
+        '<div style="font-weight:800;font-size:14px">'+label+'</div>'+
+        '<div style="font-size:12px;font-weight:700;color:'+color+';white-space:nowrap">🕐 '+mins+' min</div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">'+t.zoneLabel+'</div>'+
+      '<div style="flex:1">'+itemsHtml+'</div>'+
+      '<button onclick="kdsBump(\''+t.id+'\')" style="padding:9px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:7px;color:#080604;font-weight:700;font-size:12px;cursor:pointer">✓ Terminé</button>'+
+    '</div>';
+  }).join('');
+};
+
 function kitchenTicketHTML(od, zoneItems, zoneLabel){
   const typeLabel={place:'Sur place',take:'Emporter',del:'Livraison'};
   const lines=zoneItems.map(it=>`
@@ -3433,10 +3591,15 @@ function autoPrintKitchen(od){
   // Client ticket (doPrint) is fired first and finishes around ~400-600ms.
   // Kitchen ticket(s) are queued after that, staggered so each order sent to the
   // printer stays sequential: client → cuisine 1 (if present) → cuisine 2 (if present).
+  // KDS tickets are recorded immediately (not staggered) — the kitchen work
+  // queue should reflect the order the instant it's sent, not wait on the
+  // print stagger.
   if(zone1Items.length>0){
+    kdsAddTicket(od, zone1Items, ZONE1_LABEL, 'zone1');
     setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL)),900);
   }
   if(zone2Items.length>0){
+    kdsAddTicket(od, zone2Items, ZONE2_LABEL, 'zone2');
     const delay=zone1Items.length>0?1700:900;
     setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL)),delay);
   }
@@ -5107,7 +5270,7 @@ function showOnlineOrders(){
     return `<div style="padding:10px;border-bottom:1px solid var(--div)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div style="font-size:13px;font-weight:700">${o.client_name}</div>
-        <div style="font-size:13px;font-weight:700;color:var(--green)">${f(o.total)} DT</div>
+        <div style="font-size:13px;font-weight:700;color:var(--green)">${f(o.total)} DT${o.paid?' <span style="font-size:9px;color:var(--gold-l);font-weight:700">💳 PAYÉE</span>':''}</div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-bottom:6px">${typeLabel} · ${o.client_phone||'—'}</div>
       <div style="font-size:11px;margin-bottom:8px">${its}</div>
@@ -5221,13 +5384,23 @@ async function acceptOnlineOrder(id){
   if(!ok){ flash("⚠ Impossible d'accepter — réessayez"); return; }
   printOnlineOrderKitchenTicket(order);
   onlineOrdersPending = onlineOrdersPending.filter(o=>String(o.id)!==String(id));
-  // Carry the full order straight into both the unpaid AND preparing lists
-  // locally — don't wait for the next poll, so "🧾 Encaisser" and
-  // "✅ Marquer prêt" both work right away.
-  onlineOrdersUnpaid = [...onlineOrdersUnpaid, order];
-  onlineOrdersPreparing = [...onlineOrdersPreparing, order];
+  if(order.paid){
+    // Customer already paid online with their wallet balance (see
+    // /api/public/[slug]/order's payMethod:'wallet') — the money already
+    // moved before this order ever reached the till. Routing it into
+    // onlineOrdersUnpaid too would offer "🧾 Encaisser" for money that's
+    // already been collected, which is exactly the double-charge shape
+    // the whole paid/unpaid split exists to prevent.
+    onlineOrdersPreparing = [...onlineOrdersPreparing, order];
+  } else {
+    // Carry the full order straight into both the unpaid AND preparing lists
+    // locally — don't wait for the next poll, so "🧾 Encaisser" and
+    // "✅ Marquer prêt" both work right away.
+    onlineOrdersUnpaid = [...onlineOrdersUnpaid, order];
+    onlineOrdersPreparing = [...onlineOrdersPreparing, order];
+  }
   updateOnlineOrdersBadge();
-  flash('✓ Envoyée en cuisine — '+order.client_name);
+  flash(order.paid ? '✓ Envoyée en cuisine (payée par fidélité) — '+order.client_name : '✓ Envoyée en cuisine — '+order.client_name);
   showOnlineOrders();
 }
 async function encaisserOnlineOrder(id){
