@@ -470,6 +470,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
     <button class="hdr-btn" id="btn-tables" onclick="showTblOverlay()" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold-l);font-weight:700">🍽️ Tables</button>
     <button class="hdr-btn" id="btn-online-orders" onclick="showOnlineOrders()" style="display:none">🌐 Commandes<span id="ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn" onclick="showKdsOverlay()">🖥️ Cuisine<span id="kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
+    <button class="hdr-btn" onclick="showReadyBoard()">🔔 Prêtes<span id="ready-board-badge" style="display:none;margin-left:5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn hdr-icon" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <div class="hdr-menu-wrap">
       <button class="hdr-btn hdr-icon" onclick="toggleHdrMenu(event)" title="Menu">☰</button>
@@ -695,6 +696,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
       <button class="hdr-btn" onclick="hideTblOverlay()">🥡 Sans table</button>
       <button class="hdr-btn" id="tbl-btn-online-orders" onclick="showOnlineOrders()" style="display:none">🌐<span id="tbl-ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn" onclick="showKdsOverlay()">🖥️<span id="tbl-kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
+      <button class="hdr-btn" onclick="showReadyBoard()">🔔<span id="tbl-ready-board-badge" style="display:none;margin-left:5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn hdr-icon" onclick="toggleTheme()" title="Mode clair/sombre">🌙</button>
       <div class="hdr-menu-wrap">
         <button class="hdr-btn hdr-icon" onclick="toggleTblHdrMenu(event)" title="Menu">☰</button>
@@ -739,10 +741,34 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
       <button class="hdr-btn" onclick="hideKdsOverlay()">✕ Fermer</button>
     </div>
   </div>
+  <!-- Each physical station (bar, cuisine, chicha) can leave this screen
+       open filtered to only ITS zone — one device per station, same as a
+       real kitchen only cares about its own tickets, not the whole board. -->
+  <div id="kds-zone-tabs" style="display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--div);flex-wrap:wrap"></div>
   <div id="kds-grid" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start"></div>
+</div>
+<div id="ready-board-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:210;flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--div);background:var(--card)">
+    <div style="font-size:16px;font-weight:800;color:var(--gold-l)">🔔 Commandes prêtes</div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <!-- Whether the customer walks up to get it or a server brings it out
+           only changes the label on the clear button below — the manager
+           picks whichever matches how this place actually runs. -->
+      <select id="ready-board-mode" onchange="window.setPickupMode(this.value)" style="background:var(--card);border:1px solid var(--div);border-radius:6px;padding:6px 8px;color:var(--txt);font-size:12px">
+        <option value="server">🧑‍🍳 Le serveur apporte</option>
+        <option value="self">🚶 Le client vient chercher</option>
+      </select>
+      <button class="hdr-btn" onclick="hideReadyBoard()">✕ Fermer</button>
+    </div>
+  </div>
+  <div id="ready-board-grid" style="flex:1;overflow-y:auto;padding:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;align-content:start"></div>
 </div>
 <div id="tbl-bar">
   <button class="tbl-bar-btn" onclick="tblSendKitchen()" style="background:var(--green);color:#fff">🍳 Envoyer</button>
+  <!-- Manual fallback for a kitchen that works from paper tickets only, with
+       no KDS screen to tap "done" on — this table can still be marked ready
+       and show up on the ready-board (see showReadyBoard/tblMarkReadyManual). -->
+  <button class="tbl-bar-btn" onclick="window.tblMarkReadyManual()" style="background:var(--card);border-top:1px solid var(--div);color:var(--green)">🔔 Prêt</button>
   <button class="tbl-bar-btn" onclick="tblPrintAddition()" style="background:var(--orange);color:#fff">📄 Addition</button>
   <button class="tbl-bar-btn" onclick="showSplitBill()" style="background:var(--card);border-top:1px solid var(--div);color:var(--muted)">➗ Diviser</button>
   <button class="tbl-bar-btn" onclick="window.tblStartTransfer()" style="background:var(--card);border-top:1px solid var(--div);color:var(--muted)">🔄 Transférer</button>
@@ -3823,10 +3849,39 @@ function updateKdsBadge(){
   });
 }
 
+// Lets one physical screen sit in the kitchen filtered to just CUISINE and
+// another sit at the bar filtered to just BAR — the diagram shows two
+// separate "écran" boxes, not one shared screen everyone has to squint at.
+// 'all' (default) keeps today's behavior of showing every zone together.
+var _kdsZoneFilter = 'all';
+function _kdsZoneList(){
+  var zones = [{key:'zone1', label:ZONE1_LABEL}, {key:'zone2', label:ZONE2_LABEL}];
+  if(ZONE3_CATS.length>0) zones.push({key:'zone3', label:ZONE3_LABEL});
+  return zones;
+}
+window.setKdsZoneFilter = function(zone){
+  _kdsZoneFilter = zone;
+  renderKdsZoneTabs();
+  renderKdsScreen();
+};
+function renderKdsZoneTabs(){
+  var el = document.getElementById('kds-zone-tabs');
+  if(!el) return;
+  var zones = _kdsZoneList();
+  if(zones.length < 2){ el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display = 'flex';
+  var tabs = [{key:'all', label:'Tout'}].concat(zones);
+  el.innerHTML = tabs.map(function(z){
+    var active = _kdsZoneFilter===z.key;
+    return '<button onclick="window.setKdsZoneFilter(\''+z.key+'\')" style="padding:6px 14px;border-radius:20px;border:1px solid '+(active?'var(--gold)':'var(--div)')+';background:'+(active?'var(--gold)':'var(--card)')+';color:'+(active?'#080604':'var(--muted)')+';font-size:12px;font-weight:700;cursor:pointer">'+z.label+'</button>';
+  }).join('');
+}
+
 window.showKdsOverlay = function(){
   var el = document.getElementById('kds-overlay');
   if(!el) return;
   el.style.display = 'flex';
+  renderKdsZoneTabs();
   renderKdsScreen();
   // Re-render on a timer so elapsed-time colors climb (green→orange→red)
   // even if nothing new gets sent while the screen is left open.
@@ -3846,13 +3901,38 @@ window.kdsBump = function(id){
   saveKdsTickets();
   updateKdsBadge();
   renderKdsScreen();
+  // This is the diagram's "cuisine touches order OK" step — once every zone's
+  // ticket for a given table/order is bumped, nothing is still cooking, so the
+  // customer/staff-facing Ready-Board can light up. A table can have several
+  // tickets (one per zone: bar + cuisine) so only flip to ready once ALL of
+  // them are done, not on the first bump.
+  var stillPending;
+  if(t.tblNum){
+    stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.tblNum===t.tblNum && x.tblSec===t.tblSec; });
+    if(!stillPending && typeof window.tblMarkReady==='function') window.tblMarkReady(t.tblNum, t.tblSec);
+  }else{
+    stillPending = _kdsTickets.some(function(x){ return !x.bumped && !x.tblNum && x.num===t.num; });
+    // Non-table online orders are tagged 'WEB007' etc (see printOnlineOrderKitchenTicket)
+    // — recover the real numeric online_orders id so we can tell the server
+    // too (the customer's /moi tracking page polls that, not this KDS board).
+    var realId = (typeof t.num==='string' && t.num.slice(0,3)==='WEB') ? parseInt(t.num.slice(3),10) : null;
+    if(!stillPending && realId){
+      window._readyPickupOrders = window._readyPickupOrders || [];
+      if(!window._readyPickupOrders.some(function(o){ return o.id===realId; })){
+        window._readyPickupOrders.push({id:realId, client_name:t.cliName||'', readyAt:Date.now()});
+      }
+      if(typeof _tblUpdateReadyBadge==='function') _tblUpdateReadyBadge();
+      if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+      if(typeof _kdsMarkOnlineOrderReadySilent==='function') _kdsMarkOnlineOrderReadySilent(realId);
+    }
+  }
 };
 
 window.renderKdsScreen = function(){
   var grid = document.getElementById('kds-grid');
   var countEl = document.getElementById('kds-count');
   if(!grid) return;
-  var pending = _kdsTickets.filter(function(t){ return !t.bumped; }).sort(function(a,b){ return a.sentAt-b.sentAt; });
+  var pending = _kdsTickets.filter(function(t){ return !t.bumped && (_kdsZoneFilter==='all' || t.zone===_kdsZoneFilter); }).sort(function(a,b){ return a.sentAt-b.sentAt; });
   if(countEl) countEl.textContent = pending.length+' bon(s) en attente';
   if(!pending.length){
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 20px;font-size:14px">✓ Aucun bon en attente — cuisine à jour</div>';
@@ -5409,6 +5489,12 @@ applyTheme(localStorage.getItem(THEME_KEY)||'dark');
   const hdrName   = document.getElementById('hdr-logo-name');
   if(hdrLetter) hdrLetter.textContent = CLIENT_CONFIG.logoLetter;
   if(hdrName)   hdrName.textContent   = CLIENT_CONFIG.name;
+  // Floor-plan screen has its own header with its own logo-name id — same
+  // fix as hdr-logo-name above, just missed the first time (every table
+  // client was stuck showing the base file's name here regardless of
+  // CLIENT_CONFIG).
+  const tblName = document.getElementById('tbl-logo-name');
+  if(tblName) tblName.textContent = CLIENT_CONFIG.name;
   // Login cards
   const managerCard = document.getElementById('login-manager-name');
   const cashierCard = document.getElementById('login-cashier-name');
@@ -6039,6 +6125,17 @@ async function markOnlineOrderReady(id){
   flash('✓ Commande marquée prête');
   showOnlineOrders();
 }
+// Same server call as markOnlineOrderReady, but silent — used when the KDS
+// bump itself is what proved the order's ready (see kdsBump), which can fire
+// while a cashier is mid-checkout on a completely different sale. Popping
+// the "Commandes en ligne" modal open under them would be disruptive; the
+// 🔔 Ready-Board badge is the correct place for this to surface instead.
+async function _kdsMarkOnlineOrderReadySilent(id){
+  const ok = await postOnlineOrderAction(id,'markReady');
+  if(!ok) return;
+  onlineOrdersPreparing = onlineOrdersPreparing.filter(o=>String(o.id)!==String(id));
+  updateOnlineOrdersBadge();
+}
 async function postOnlineOrderAction(id, action){
   try{
     const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/online-orders'), {
@@ -6303,6 +6400,7 @@ function tblAuditLabel(action){
     open:'🟡 Ouverture', item_add:'➕ Article ajouté', item_remove:'➖ Article retiré',
     sent_kitchen:'🍳 Envoyé en cuisine', bill_printed:'📄 Addition imprimée',
     paid:'💰 Paiement', closed:'🔒 Table libérée', table_created:'🆕 Table créée',
+    ready:'🔔 Commande prête', served:'✓ Servie / Récupérée',
   };
   return m[action] || action;
 }
@@ -6475,6 +6573,145 @@ window.tblGoToTableByNum = function(num, sec){
   var tbl = _tables.find(function(t){ return t.num===Number(num) && t.sec===sec; });
   if(!tbl){ flash('⚠ Table '+num+' introuvable sur ce plan de salle'); return; }
   window.tblGoToTable(tbl.id);
+};
+
+// ── Ready-Board: order readiness signaling ────────────────────────────
+// Every kitchen/bar can be paper-only, screen-only, or mixed — the owner
+// picks, we don't assume. Whatever gets an order to "ready" (a KDS bump
+// with nothing left pending, or the manual 🔔 button for paper kitchens),
+// it lands here as one shared signal so staff/customers know to act on it.
+// pickupMode controls the label only ('server' = staff brings it to the
+// table, 'self' = customer/table watches the board and comes get it).
+window.getPickupMode = function(){
+  return localStorage.getItem('servio-pickup-mode-v1') || 'server';
+};
+window.setPickupMode = function(mode){
+  mode = (mode==='self') ? 'self' : 'server';
+  localStorage.setItem('servio-pickup-mode-v1', mode);
+  var sel = document.getElementById('ready-board-mode');
+  if(sel) sel.value = mode;
+  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+};
+
+function _tblUpdateReadyBadge(){
+  var readyTables = _tables.filter(function(t){ return t.readyForPickup; }).length;
+  var readyPickup = (window._readyPickupOrders||[]).length;
+  var n = readyTables + readyPickup;
+  ['ready-board-badge','tbl-ready-board-badge'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = n>0 ? String(n) : '';
+    el.style.display = n>0 ? 'inline-block' : 'none';
+  });
+}
+
+// Called once a table's order is genuinely ready (either the last pending
+// KDS ticket for it got bumped, or staff mark it ready manually on a paper
+// ticket). Idempotent — bumping a second zone's ticket for an already-ready
+// table just no-ops.
+window.tblMarkReady = function(num, sec){
+  var tbl = _tables.find(function(t){ return t.num===Number(num) && t.sec===sec; });
+  if(!tbl || tbl.readyForPickup) return;
+  tbl.readyForPickup = true;
+  tbl.readyAt = Date.now();
+  tblAudit(tbl, 'ready', '🔔 Commande prête ('+(window.getPickupMode()==='self' ? 'client à récupérer' : 'à apporter')+')');
+  saveTables();
+  renderTblGrid();
+  _tblUpdateReadyBadge();
+  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+};
+
+// Fallback for paper-ticket kitchens with no KDS screen at all — staff taps
+// this on the table itself once the order's physically ready.
+window.tblMarkReadyManual = function(){
+  var tbl = getTable(_activeTable);
+  if(!tbl){ flash('⚠ Aucune table sélectionnée'); return; }
+  if(tbl.readyForPickup){ flash('Déjà marquée prête'); return; }
+  tbl.readyForPickup = true;
+  tbl.readyAt = Date.now();
+  tblAudit(tbl, 'ready', '🔔 Commande prête (marquée manuellement)');
+  saveTables();
+  renderTblGrid();
+  _tblUpdateReadyBadge();
+  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+  flash('🔔 Table '+tbl.num+' marquée prête');
+};
+
+// Order actually delivered/collected — clears the ready flag and closes the
+// loop with an audit entry distinct from 'ready' so the trail shows both
+// the moment it was cooked and the moment it reached the customer.
+window.tblMarkServed = function(tableId){
+  var tbl = getTable(tableId);
+  if(!tbl || !tbl.readyForPickup) return;
+  tbl.readyForPickup = false;
+  tbl.readyAt = null;
+  tblAudit(tbl, 'served', window.getPickupMode()==='self' ? '✓ Récupérée par le client' : '✓ Servie par le personnel');
+  saveTables();
+  renderTblGrid();
+  _tblUpdateReadyBadge();
+  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+};
+
+// Non-table (pickup/takeaway/kiosk) orders share the same board once ready —
+// no table to flag, so they live in this small array instead.
+window._readyPickupOrders = window._readyPickupOrders || [];
+window.clearReadyPickupOrder = function(id){
+  window._readyPickupOrders = window._readyPickupOrders.filter(function(o){ return o.id!==id; });
+  _tblUpdateReadyBadge();
+  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
+};
+
+window.showReadyBoard = function(){
+  var ov = document.getElementById('ready-board-overlay');
+  if(!ov) return;
+  ov.style.display = 'flex';
+  var sel = document.getElementById('ready-board-mode');
+  if(sel) sel.value = window.getPickupMode();
+  window.renderReadyBoard();
+  if(window._readyBoardTimer) clearInterval(window._readyBoardTimer);
+  window._readyBoardTimer = setInterval(window.renderReadyBoard, 15000);
+};
+window.hideReadyBoard = function(){
+  var ov = document.getElementById('ready-board-overlay');
+  if(ov) ov.style.display = 'none';
+  if(window._readyBoardTimer){ clearInterval(window._readyBoardTimer); window._readyBoardTimer = null; }
+};
+
+function _tblElapsedMin(ts){
+  if(!ts) return 0;
+  return Math.max(0, Math.round((Date.now()-ts)/60000));
+}
+
+window.renderReadyBoard = function(){
+  var grid = document.getElementById('ready-board-grid');
+  if(!grid) return;
+  var mode = window.getPickupMode();
+  var btnLabel = mode==='self' ? '✓ Récupéré' : '✓ Apporté';
+  var readyTables = _tables.filter(function(t){ return t.readyForPickup; });
+  var pickupOrders = window._readyPickupOrders||[];
+  if(!readyTables.length && !pickupOrders.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px 0">Aucune commande prête pour le moment</div>';
+    _tblUpdateReadyBadge();
+    return;
+  }
+  var cards = readyTables.map(function(t){
+    return '<div style="background:var(--card);border:2px solid var(--green);border-radius:12px;padding:18px;text-align:center">'+
+      '<div style="font-size:28px;font-weight:800">Table '+t.num+'</div>'+
+      (t.sec ? '<div style="color:var(--muted);font-size:12px;margin-bottom:6px">'+t.sec+'</div>' : '')+
+      '<div style="color:var(--green);font-size:12px;margin-bottom:12px">🔔 Prête depuis '+_tblElapsedMin(t.readyAt)+' min</div>'+
+      '<button class="mconfirm" style="width:100%" onclick="window.tblMarkServed(\''+t.id+'\')">'+btnLabel+'</button>'+
+    '</div>';
+  }).join('');
+  cards += pickupOrders.map(function(o){
+    return '<div style="background:var(--card);border:2px solid var(--green);border-radius:12px;padding:18px;text-align:center">'+
+      '<div style="font-size:20px;font-weight:800">'+(o.client_name||('Commande #'+o.id))+'</div>'+
+      '<div style="color:var(--muted);font-size:12px;margin-bottom:6px">À emporter</div>'+
+      '<div style="color:var(--green);font-size:12px;margin-bottom:12px">🔔 Prête depuis '+_tblElapsedMin(o.readyAt)+' min</div>'+
+      '<button class="mconfirm" style="width:100%" onclick="window.clearReadyPickupOrder('+o.id+')">✓ Récupéré</button>'+
+    '</div>';
+  }).join('');
+  grid.innerHTML = cards;
+  _tblUpdateReadyBadge();
 };
 
 // ── Manager: per-table QR ordering links ──────────────────────────────
