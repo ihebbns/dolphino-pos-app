@@ -5374,6 +5374,55 @@ function printOnlineOrderKitchenTicket(order){
   };
   try{ autoPrintKitchen(od); }catch(e){}
 }
+// A wallet-prepaid online order (see /api/public/[slug]/order's
+// payMethod:'wallet') already collected real money server-side the moment
+// the customer submitted it — nobody will ever click "🧾 Encaisser" for it
+// (see acceptOnlineOrder below), so without this it would sit forever as a
+// real payment the till's own books never recorded: no hist entry, no
+// stock deduction, invisible to chiffre d'affaires and the Z-report, even
+// though the customer's wallet balance genuinely went down. This silently
+// runs the SAME sale-recording steps encaisser()/confirmWalletSale() use
+// (SQLite save, hist, daily total, stock, cloud sync) the instant staff
+// accepts it — without touching the wallet balance again (already done)
+// or opening the drawer (no cash moved).
+function finalizeOnlinePaidOrderSale(order){
+  const saleItems = (order.items_json||[]).map(it=>({
+    key: it.id+(it.variant||''), id: it.id, name: it.name, e: it.e||'🍽️',
+    p: Number(it.p)||0, qty: Math.max(1,parseInt(it.qty)||1), variant: it.variant||'', note:'',
+    c: costOf(it.id),
+  }));
+  const g = Number(order.total)||0;
+  const s = saleItems.reduce((a,i)=>a+i.p*i.qty,0);
+  const cogs = saleItems.reduce((a,i)=>a+(i.c||0)*i.qty,0);
+  let saleMargin=0;
+  saleItems.forEach(it=>{const mi=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);if(mi&&mi.cost)saleMargin+=(it.p-mi.cost)*it.qty;});
+  const now=new Date();
+  const od={
+    num:currentOrderNum, margin:saleMargin, cogs,
+    date:now.toLocaleDateString('fr-TN'), time:now.toLocaleTimeString('fr-TN'),
+    items:saleItems, s, d:0, disc:0, g, payMode:'wallet', r:0, monnaie:0,
+    businessDate:todayKey(),
+    type: order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'),
+    cliName: order.client_name||'', cliTel: order.client_phone||'',
+    cashier: USERS[currentUser]?.name||'',
+    sessionId: currentSession?.sid||'',
+    onlineOrderId: order.id,
+  };
+  if(window.electronAPI?.saveSale) window.electronAPI.saveSale(od);
+  hist.push(od); daily+=g; lastOrderData=od;
+  orderNum = Math.max(orderNum, currentOrderNum) + 1;
+  currentOrderNum = orderNum;
+  const dtEl=document.getElementById('dt');
+  if(dtEl) dtEl.textContent='Ventes du jour : '+f(daily)+' DT';
+  decreaseStock(od.items);
+  syncSale(od);
+  if(document.getElementById('print-ticket-check')?.checked){
+    showReceipt(od);
+    autoPrintAll(od, true); // kitchen ticket already printed at accept
+  }
+  document.getElementById('onum').textContent='#'+String(currentOrderNum).padStart(3,'0');
+  saveState();
+}
 async function acceptOnlineOrder(id){
   // o.id comes back as a STRING from the server (online_orders.id is BIGSERIAL —
   // Neon's driver stringifies bigints to avoid JS precision loss), while `id`
@@ -5390,8 +5439,10 @@ async function acceptOnlineOrder(id){
     // moved before this order ever reached the till. Routing it into
     // onlineOrdersUnpaid too would offer "🧾 Encaisser" for money that's
     // already been collected, which is exactly the double-charge shape
-    // the whole paid/unpaid split exists to prevent.
+    // the whole paid/unpaid split exists to prevent. The sale itself still
+    // needs to be recorded though — see finalizeOnlinePaidOrderSale.
     onlineOrdersPreparing = [...onlineOrdersPreparing, order];
+    try{ finalizeOnlinePaidOrderSale(order); }catch(e){ console.error('finalizeOnlinePaidOrderSale failed', e); }
   } else {
     // Carry the full order straight into both the unpaid AND preparing lists
     // locally — don't wait for the next poll, so "🧾 Encaisser" and
