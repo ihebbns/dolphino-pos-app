@@ -620,19 +620,23 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
 // ║          CLIENT CONFIGURATION — CHANGE PER CLIENT   ║
 // ╚══════════════════════════════════════════════════════╝
 const CLIENT_CONFIG = {
+  // TEMPLATE FILE — never a real client. tools/new-client always overwrites
+  // this whole block (see buildConfigBlock in server.mjs), so these values
+  // only matter if someone runs this file directly by mistake — deliberately
+  // NOT a real syncKey, so that mistake can't sync to anyone's real account.
   // ── Identity ──────────────────────────────────────────
-  name:        'LA COUPOLE',
-  tagline:     'Restaurant & Fast Food',
+  name:        'TEMPLATE — COMPTOIR / FAST-FOOD',
+  tagline:     'Base wizard — ne pas déployer tel quel',
   logo:        '🍽️',
-  logoLetter:  'L',
+  logoLetter:  'T',
   city:        'Tunisie',
   phone:       '',
   currency:    'DT',
 
   // ── Sync / Dashboard ──────────────────────────────────
-  syncEnabled: true,
+  syncEnabled: false,
   syncUrl:     'https://servio.tn/api/sync',
-  syncKey:     'SRVO-LACOUPOLE-001',    // ← CHANGE THIS per client
+  syncKey:     'TEMPLATE-DO-NOT-USE',
   posStockLocked: false,
 
   // ── Users / PINs ──────────────────────────────────────

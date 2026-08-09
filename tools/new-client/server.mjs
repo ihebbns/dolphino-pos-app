@@ -46,7 +46,7 @@ function readWebEnv() {
 // what PUT /api/admin/clients does server-side (same table, same columns,
 // same bcrypt cost) — avoids depending on the deployed Vercel env matching
 // this machine's local ADMIN_SECRET_KEY, which isn't guaranteed.
-async function createWebDashboard({ name, email, password, apiKey, city, phone, tagline, logo, zones, modules }) {
+async function createWebDashboard({ name, email, password, apiKey, city, phone, tagline, logo, zones, modules, publicSlug }) {
   const env = readWebEnv();
   if (!env.DATABASE_URL) return { ok: false, error: 'DATABASE_URL introuvable (servio-web/.env.local manquant ou incomplet)' };
   try {
@@ -65,8 +65,8 @@ async function createWebDashboard({ name, email, password, apiKey, city, phone, 
     // mismatch this call exists to prevent.
     const config = { tagline, logo, ...zones, ...(modules ? { modules } : {}) };
     await sql`
-      INSERT INTO restaurants (name, owner_email, password_hash, api_key, city, phone, plan, config)
-      VALUES (${name}, ${email.toLowerCase()}, ${hash}, ${apiKey}, ${city}, ${phone}, 'active', ${JSON.stringify(config)})
+      INSERT INTO restaurants (name, owner_email, password_hash, api_key, city, phone, plan, config, public_slug)
+      VALUES (${name}, ${email.toLowerCase()}, ${hash}, ${apiKey}, ${city}, ${phone}, 'active', ${JSON.stringify(config)}, ${publicSlug || null})
     `;
     return { ok: true };
   } catch (e) {
@@ -88,16 +88,21 @@ async function createWebDashboard({ name, email, password, apiKey, city, phone, 
 const BASES = {
   table: {
     label: 'Service à table',
-    hint: 'Plan de salle, addition par table, split de l\'addition — comme DA COFFEE MORE.',
-    file: 'clients/Coffee_More/index.html',
+    hint: 'Plan de salle, addition par table, split de l\'addition, sections assignées par caissier, audit temps réel, QR codes de commande par table — PLUS crédit, stock, fidélité, commandes en ligne, badge RFID, alerte imprimante (base complète comme LA COUPOLE, avec gestion de table).',
+    file: 'clients/_template_table/index.html',
     zones: true,
     maxZones: 3,
     retail: false,
   },
   counter: {
     label: 'Comptoir / Fast-food',
-    hint: 'Vente directe au comptoir, sans plan de salle — comme LA COUPOLE : crédit, stock, fidélité, borne self-service + commande client par téléphone, badge RFID, tickets cuisine par zone, annulation/remboursement.',
-    file: 'clients/La_Coupole/index.html',
+    hint: 'Vente directe au comptoir, sans plan de salle : crédit, stock, fidélité, borne self-service + commande client par téléphone, badge RFID, tickets cuisine par zone, annulation/remboursement.',
+    // A sanitized, bug-fixed copy — not the real La_Coupole client file. New
+    // clients must never clone a live production account's file directly
+    // (the identity gets overwritten anyway, but bugs found and fixed here
+    // would otherwise never reach new clients without also touching the
+    // real one).
+    file: 'clients/_template_counter/index.html',
     zones: true,
     maxZones: 2,
     retail: false,
@@ -144,6 +149,7 @@ function buildConfigBlock(baseKey, cfg) {
   lines.push('  syncEnabled: true,');
   lines.push(`  syncUrl:     '${esc(cfg.syncUrl || 'https://servio.tn/api/sync')}',`);
   lines.push(`  syncKey:     '${esc(cfg.syncKey)}',    // ← unique par client`);
+  if (cfg.publicSlug) lines.push(`  publicSlug:  '${esc(cfg.publicSlug)}',    // servio.tn/moi/<publicSlug> — commandes en ligne / QR tables`);
   if (baseKey !== 'retail') lines.push('  posStockLocked: false,');
   lines.push('');
   lines.push('  // ── Users / PINs ────────────────────────────────────');
@@ -183,8 +189,8 @@ function buildConfigBlock(baseKey, cfg) {
     if (cfg.creditEnabled === false) moduleFlags.push('credit: false');
     if (cfg.stockEnabled === false) moduleFlags.push('stockTracking: false');
     // Only meaningful on bases that actually carry the wallet/kiosk code —
-    // isWalletEnabled()/isOnlineOrdersEnabled() exist on La Coupole-derived
-    // (counter) clients, not the older table/retail bases.
+    // isWalletEnabled()/isOnlineOrdersEnabled() exist on the counter (La
+    // Coupole) and table-service (_template_table) bases, not retail.
     if (cfg.walletEnabled === false) moduleFlags.push('wallet: false');
     if (cfg.onlineOrdersEnabled === false) moduleFlags.push('onlineOrders: false');
   }
@@ -352,6 +358,27 @@ const server = http.createServer(async (req, res) => {
       const sourcePath = path.join(POS_DIR, base.file);
       const source = fs.readFileSync(sourcePath, 'utf8');
 
+      // Only write keys the wizard actually offered a checkbox for — a
+      // retail base never showed credit/stock/wallet toggles, so those stay
+      // undefined here rather than being written as an incorrect false.
+      const modules = {};
+      if (typeof config.creditEnabled === 'boolean') modules.credit = config.creditEnabled;
+      if (typeof config.stockEnabled === 'boolean') modules.stockTracking = config.stockEnabled;
+      if (typeof config.walletEnabled === 'boolean') modules.wallet = config.walletEnabled;
+      if (typeof config.onlineOrdersEnabled === 'boolean') modules.onlineOrders = config.onlineOrdersEnabled;
+
+      // A public ordering slug only means anything once there's a web
+      // dashboard row to attach it to (servio.tn/moi/<slug> resolves via
+      // restaurants.public_slug) — computed here, BEFORE buildConfigBlock,
+      // so the EXE's CLIENT_CONFIG.publicSlug and the DB row always agree.
+      // The random suffix avoids a collision against restaurants.public_slug's
+      // UNIQUE index for two clients sharing a name (e.g. two "Le Baguette").
+      const wantsOnlineOrdering = (baseKey === 'table' || baseKey === 'counter')
+        && config.onlineOrdersEnabled !== false && config.webEmail && config.webPassword;
+      if (wantsOnlineOrdering) {
+        config.publicSlug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+      }
+
       const configBlock = buildConfigBlock(baseKey, config);
       const menuBlock = buildMenuBlock(baseKey, categories || []);
       const finalHtml = injectBlocks(source, baseKey, configBlock, menuBlock);
@@ -370,19 +397,12 @@ const server = http.createServer(async (req, res) => {
           zone1Label: config.zone1Label, zone2Label: config.zone2Label,
           zone1Cats: config.zone1Cats, zone2Cats: config.zone2Cats,
         };
-        // Only write keys the wizard actually offered a checkbox for — a
-        // retail base never showed credit/stock/wallet toggles, so those stay
-        // undefined here rather than being written as an incorrect false.
-        const modules = {};
-        if (typeof config.creditEnabled === 'boolean') modules.credit = config.creditEnabled;
-        if (typeof config.stockEnabled === 'boolean') modules.stockTracking = config.stockEnabled;
-        if (typeof config.walletEnabled === 'boolean') modules.wallet = config.walletEnabled;
-        if (typeof config.onlineOrdersEnabled === 'boolean') modules.onlineOrders = config.onlineOrdersEnabled;
         web = await createWebDashboard({
           name: config.name, email: config.webEmail, password: config.webPassword,
           apiKey: config.syncKey, city: config.city, phone: config.phone,
           tagline: config.tagline, logo: config.logo, zones,
           modules: Object.keys(modules).length ? modules : undefined,
+          publicSlug: config.publicSlug,
         });
       }
 
@@ -392,6 +412,7 @@ const server = http.createServer(async (req, res) => {
         clientFile: `clients/${slug}/index.html`,
         buildScript: `build-${slug}.mjs`,
         web,
+        publicSlug: config.publicSlug || undefined,
       });
       return;
     }

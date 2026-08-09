@@ -249,10 +249,8 @@ const FEATURE_DEFS = {
   card:    { label:'💳 Carte bancaire (TPE)', desc:'Bouton de paiement carte à la caisse.', bases:['table'] },
   credit:  { label:'📒 Crédit clients', desc:'Vente à crédit + suivi des dettes clients.', bases:['table','counter'] },
   stock:   { label:'📦 Suivi de stock à l\'unité', desc:'Compter les quantités, alertes de rupture.', bases:['table','counter'] },
-  // Only on 'counter' (La Coupole) for now — the wallet/kiosk code isn't in
-  // the 'table' base yet. Add 'table' here once that variant exists.
-  wallet:  { label:'💳 Fidélité (cartes prépayées)', desc:'Solde client, bonus 30% à la recharge, récompenses mensuelles.', bases:['counter'] },
-  onlineOrders: { label:'🌐 Commandes en ligne (borne + téléphone)', desc:'Borne tactile en libre-service + page de commande client par téléphone, suivi en direct.', bases:['counter'] },
+  wallet:  { label:'💳 Fidélité (cartes prépayées)', desc:'Solde client, bonus 30% à la recharge, récompenses mensuelles.', bases:['table','counter'] },
+  onlineOrders: { label:'🌐 Commandes en ligne (borne + téléphone + QR par table)', desc:'Borne tactile en libre-service, page de commande client par téléphone, QR codes par table (service à table), suivi en direct.', bases:['table','counter'] },
 };
 let features = { card:true, credit:true, stock:true, wallet:true, onlineOrders:true };
 function featureApplies(key){ return !!FEATURE_DEFS[key]?.bases.includes(baseKey); }
@@ -278,27 +276,45 @@ function renderFeatures(){
   el.innerHTML = rows.join('');
 }
 
-function genSyncKey(){
+function randomSyncKey(){
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   const hex = [...bytes].map(b=>b.toString(16).padStart(2,'0').toUpperCase()).join('');
+  return `SRVO-${hex.slice(0,4)}-${hex.slice(4,8)}`;
+}
+function genSyncKey(){
   const sk = document.getElementById('f-synckey');
-  sk.value = `SRVO-${hex.slice(0,4)}-${hex.slice(4,8)}`;
+  sk.value = randomSyncKey();
   sk.dataset.touched = '1';
+}
+// The dashboard login password, same reasoning as the sync key below — never
+// derived from anything guessable. 9 random bytes ≈ 72 bits, base64-ish,
+// stripped of +/=/padding so it's plain alphanumeric to paste/read aloud.
+function randomPassword(){
+  const bytes = new Uint8Array(9);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g,'').slice(0,12);
 }
 function slugifyName(n){
   return (n||'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,20) || 'CLIENT';
 }
 document.getElementById('f-name').addEventListener('input', e=>{
   const sk = document.getElementById('f-synckey');
-  if(!sk.dataset.touched) sk.value = 'SRVO-' + slugifyName(e.target.value) + '-001';
+  // Never derive the sync key from the public business name — it's the
+  // POS's full read/write credential for this tenant's sales/wallets/
+  // credits/stock, and a name-derived key (e.g. "SRVO-LE-BAGUETTE-001") is
+  // guessable from the restaurant's own Google Maps listing. Auto-fill with
+  // a real random key once, then leave it alone.
+  if(!sk.dataset.touched){ sk.value = randomSyncKey(); sk.dataset.touched = '1'; }
   const emailEl = document.getElementById('f-email');
   if(!emailEl.dataset.touched){
     const slug = (e.target.value||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'').slice(0,20) || 'client';
     emailEl.value = slug + '@servio.tn';
-    const passEl = document.getElementById('f-webpass');
-    if(!passEl.dataset.touched) passEl.value = slug + '123';
   }
+  // Same reasoning as the sync key — never derive the dashboard login
+  // password from the public business name (was "<slug>123", guessable).
+  const passEl = document.getElementById('f-webpass');
+  if(!passEl.dataset.touched){ passEl.value = randomPassword(); passEl.dataset.touched = '1'; }
 });
 document.getElementById('f-synckey').addEventListener('input', e=>{ e.target.dataset.touched='1'; });
 document.getElementById('f-email').addEventListener('input', e=>{ e.target.dataset.touched='1'; });
