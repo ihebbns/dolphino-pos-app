@@ -2499,7 +2499,15 @@ async function hydrateBusinessState(){
       daily = mapped.filter(sale => sale.businessDate === currentDay)
                     .reduce((sum, sale) => sum + (Number(sale.g) || 0), 0);
       const todaySales = mapped.filter(sale => sale.businessDate === currentDay);
-      orderNum = todaySales.length ? Math.max(...todaySales.map(sale => Number(sale.num) || 0)) + 1 : 1;
+      // An accepted online/kiosk order reuses ITS OWN daily_num (501+, see
+      // encaisser()) as its sale num instead of drawing from the till's own
+      // counter — including one of those in this max() would drag the till's
+      // counter into the online range too (e.g. after encaissing online order
+      // #504, the next regular order would become #505 instead of continuing
+      // from wherever the till actually was). Same 500 boundary the server
+      // uses to keep the two ranges apart in the first place.
+      const caisseSalesToday = todaySales.filter(sale => (Number(sale.num) || 0) < 501);
+      orderNum = caisseSalesToday.length ? Math.max(...caisseSalesToday.map(sale => Number(sale.num) || 0)) + 1 : 1;
       sqliteAvailable = true;
     }catch(error){
       console.error('SQLite load failed:', error);
@@ -4902,10 +4910,15 @@ function confirmCreditSale(idx){
   const g=getGrand(),s=items.reduce((a,i)=>a+i.p*i.qty,0),d=s-g;
   const now2=new Date();const businessDate=todayKey();
   client.balance+=g;
+  // A cashier can pay off an accepted online order on a client's tab (credit)
+  // just as easily as cash — it needs the same number the customer already
+  // saw at kiosk/moi checkout, not a fresh one off the till's own counter
+  // (see the same pattern in encaisser()).
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
   // `iso` is the machine-readable instant. The date/time strings are localised
   // and cannot be parsed back into a timestamp, so the cloud needs this to order
   // history correctly after an offline spell.
-  client.history.push({type:'credit',amount:g,iso:now2.toISOString(),saleNum:orderNum,
+  client.history.push({type:'credit',amount:g,iso:now2.toISOString(),saleNum:onlineNum!=null?onlineNum:orderNum,
     by:USERS[currentUser]?.name||'',sessionId:currentSession?.sid||'',
     date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),
     items:items.map(it=>it.name+' x'+it.qty).join(', ')});
@@ -4916,9 +4929,10 @@ function confirmCreditSale(idx){
   // every credit sale look like zero profit even though its cost is known.
   let saleMargin=0;
   items.forEach(it=>{const mi=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);if(mi&&mi.cost)saleMargin+=(it.p-mi.cost)*it.qty;});
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'credit',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||''};
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'credit',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
-  hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
   od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
@@ -5318,7 +5332,12 @@ function confirmWalletSale(idx){
   if(client.balance<g){flash('⚠ Solde insuffisant');return;}
   const now2=new Date();const businessDate=todayKey();
   client.balance-=g;
-  client.history.push({type:'spend',amount:g,iso:now2.toISOString(),saleNum:orderNum,
+  // Same reuse-the-online-order's-own-number logic as encaisser() — a
+  // cashier can pay off an accepted online order out of a client's loyalty
+  // balance just as easily as cash, and it needs the same number the
+  // customer already saw at kiosk/moi checkout.
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
+  client.history.push({type:'spend',amount:g,iso:now2.toISOString(),saleNum:onlineNum!=null?onlineNum:orderNum,
     by:USERS[currentUser]?.name||'',sessionId:currentSession?.sid||'',
     date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),
     items:items.map(it=>it.name+' x'+it.qty).join(', ')});
@@ -5328,9 +5347,10 @@ function confirmWalletSale(idx){
   let saleMargin=0;
   items.forEach(it=>{const mi=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);if(mi&&mi.cost)saleMargin+=(it.p-mi.cost)*it.qty;});
   // No drawer kick — a wallet spend is not new cash, it's a balance drawn down.
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'wallet',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||''};
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'wallet',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
-  hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
   od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
