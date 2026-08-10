@@ -3166,7 +3166,7 @@ function renderOrd(){
 }
 function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
 function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;if(pendingOnlineOrderPayment)postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;const hadOnlineOrder=!!pendingOnlineOrderPayment;if(pendingOnlineOrderPayment)postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));if(hadOnlineOrder){const onumEl=document.getElementById('onum');if(onumEl)onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');}renderOrd();saveState();}}
 
 // ═══════════════ HELD COUNTER ORDERS ═══════════════
 // A held order is only a saved draft. It cannot print, affect cash, create a
@@ -5712,6 +5712,15 @@ async function encaisserOnlineOrder(id){
   // that mismatch (customer told "#3", receipt says "#47") was the actual
   // bug report this fixes.
   pendingOnlineOrderPayment = { id: order.id, dailyNum: order.daily_num, source: order.source };
+  // The header must show THIS order's own number the instant it's loaded —
+  // leaving it on the till's generic next-counter number (e.g. "#3") while
+  // the cart actually holds order #502 is exactly the two-different-numbers
+  // confusion that started this fix. One screen, one number, always matching
+  // what the customer already saw and what's about to print.
+  if(order.daily_num!=null){
+    const onumEl=document.getElementById('onum');
+    if(onumEl) onumEl.textContent='#'+String(order.daily_num).padStart(3,'0');
+  }
   renderOrd(); saveState();
   destroySessionModal();
   flash('✓ Commande de '+cliName+' chargée — encaissez pour finaliser');
