@@ -902,6 +902,49 @@ async function flushStockDeltas(){
   }
 }
 
+// ── A voided sale gives its stock AND its ingredients back ─────────────────
+// Same shape/queue mechanism as a sale's deltas (queueStockDeltas above), just
+// flagged void:true so the server reverses the sign for BOTH unit-tracked
+// products (a 'return' movement) and recipe-tracked ones (ingredients added
+// back) in one call — mirrors exactly how a sale's PATCH handles both modes
+// together. Deliberately NOT the older per-item queueStockMovement('return')
+// path: that only ever posts to the movement endpoint, which the server
+// rejects for recipe-mode items (they have no unit count to add back to) —
+// which is exactly why an annulled sale's ingredients used to stay consumed.
+const STOCK_VOID_DELTA_KEY = 'servio-stock-void-deltas-v1';
+function queueStockVoidDeltas(deltas){
+  if(!isStockEnabled()) return;
+  if(!SYNC_ENABLED || !deltas || !deltas.length) return;
+  try{
+    const q = JSON.parse(localStorage.getItem(STOCK_VOID_DELTA_KEY) || '[]');
+    for(const d of deltas) q.push(d);
+    localStorage.setItem(STOCK_VOID_DELTA_KEY, JSON.stringify(q));
+  }catch(e){}
+  flushStockVoidDeltas();
+}
+async function flushStockVoidDeltas(){
+  if(!SYNC_ENABLED) return;
+  let q = [];
+  try{ q = JSON.parse(localStorage.getItem(STOCK_VOID_DELTA_KEY) || '[]'); }catch(e){ return; }
+  if(!q.length) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/stock') + '?key=' + SYNC_API_KEY, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': SYNC_API_KEY },
+      body: JSON.stringify({
+        sold: q,
+        void: true,
+        actor: (typeof currentUser!=='undefined' && currentUser && USERS[currentUser] && USERS[currentUser].name) || '',
+        sessionId: (typeof currentSession!=='undefined' && currentSession && currentSession.sid) || '',
+      })
+    });
+    const data = await res.json();
+    if(data && data.ok) localStorage.removeItem(STOCK_VOID_DELTA_KEY);
+  }catch(e){
+    console.error('[STOCK] flushStockVoidDeltas error (offline?):', e);
+  }
+}
+
 // ── A manager correcting a count: absolute, attributed, reasoned ────────────
 async function sendStockCount(itemId, qty, reason){
   if(!SYNC_ENABLED) return;
@@ -1406,23 +1449,31 @@ function decreaseStock(soldItems){
   queueStockDeltas(deltas);
 }
 
-// A voided sale gives its items back — the mirror of decreaseStock(), but it
-// can't reuse queueStockDeltas() (the /api/stock PATCH "sold" path always
-// subtracts, by design, so a server that only ever saw negative deltas can't
-// be tricked into adding stock back through it). Posts a proper 'return'
-// stock movement instead — the same signed-ledger mechanism a delivery uses,
-// just with the sign a refund actually means.
+// A voided sale gives its items back — the mirror of decreaseStock(), same
+// deltas shape (item_id/qty/uid/ts/variant) so the server routes each line
+// through the SAME trackMode resolution a sale used, just reversed: a
+// 'return' movement for unit-tracked products, ingredients added back for
+// recipe-tracked ones. queueStockVoidDeltas (not the older queueStockMovement
+// 'return' path) is what makes the ingredient side actually happen — see its
+// own comment for why the movement endpoint alone never could.
 function increaseStock(items){
   if(!isStockEnabled()) return;
   const stock=loadStock();
+  const deltas=[];
   for(const it of items){
     if(!isDrinkItem(it)) continue;
     const q = it.qty||1;
     const cur = typeof stock[it.id]==='number' ? stock[it.id] : 0;
     stock[it.id] = cur + q;
-    queueStockMovement(it.id, 'return', q, 'Annulation vente');
+    deltas.push({
+      item_id: it.id, qty: q,
+      uid: 'V' + Date.now().toString(36) + Math.random().toString(36).slice(2,7) + '_' + it.id,
+      ts: new Date().toISOString(),
+      variant: it.variant || '',
+    });
   }
   saveStock(stock);
+  queueStockVoidDeltas(deltas);
 }
 
 // ── STOCK DEBUG — call stockDebug() from DevTools console (F12) ──────────
@@ -2010,6 +2061,7 @@ window.addEventListener('online', async () => {
   flushCreditsPush();
   flushWalletsPush();
   flushStockDeltas();
+  try{ flushStockVoidDeltas(); }catch(e){}
   try{ flushStockMovements(); }catch(e){}
   try{ flushTrackModeQueue(); }catch(e){}
   try{ flushRuptureQueue(); }catch(e){}
@@ -4616,6 +4668,10 @@ function confirmVoidSale(idx, reason){
   daily -= od.g;
   const dt = document.getElementById('dt'); if(dt) dt.textContent = 'Ventes du jour : '+f(daily)+' DT';
   increaseStock(od.items);
+  // Re-post the sale so the dashboard learns it was voided too — lands on the
+  // SAME row (same num/business_date/cashier), the server's upsert only ever
+  // OR's voided true, so this can never accidentally un-void a stale replay.
+  try{ syncSale(od); }catch(e){}
   // This sale paid for an online order — the payment didn't stand, so the
   // order goes back to "needs payment" rather than staying marked paid for
   // money that was refunded (only possible within the same session that
@@ -5589,6 +5645,12 @@ async function checkLicense(){
       if(cfg.cuisine2Cats)   { CLIENT_CONFIG.zone2Cats=cfg.cuisine2Cats; CLIENT_CONFIG.zone2Label='CUISINE 2 — '+cfg.cuisine2Cats.join(' / '); }
       if(cfg.boissonCats)    CLIENT_CONFIG.boissonCats=cfg.boissonCats;
       if(cfg.phone)          CLIENT_CONFIG.phone=cfg.phone;
+      // publicSlug isn't baked correctly into every EXE (the wizard didn't
+      // always know it yet at build time), and it can change later if the
+      // admin edits it in /admin — this is what makes the public ordering
+      // link self-heal without ever needing a rebuild: whatever the server
+      // has right now always wins, checked every 30 min.
+      if('publicSlug' in cfg) CLIENT_CONFIG.publicSlug=cfg.publicSlug||'';
       // Remote module distribution — an admin toggling a module (e.g. Fidélité) on
       // the web reaches this till through the same check the license status uses,
       // no rebuild needed. Merged, not replaced, so a module absent from THIS
