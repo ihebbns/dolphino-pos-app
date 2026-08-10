@@ -3348,13 +3348,22 @@ function encaisser(){
   // back to local menu cost offline). Attach per-line `c` and a total `cogs`.
   const saleItems=items.map(it=>({...it, c:costOf(it.id)}));
   const cogs=saleItems.reduce((a,i)=>a+(i.c||0)*i.qty,0);
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now.toLocaleDateString('fr-TN'),time:now.toLocaleTimeString('fr-TN'),
+  // A cart loaded from an accepted kiosk/moi order (see encaisserOnlineOrder)
+  // keeps THAT order's own number here, instead of drawing a fresh one from
+  // the till's local counter — the customer already saw this exact number at
+  // kiosk/moi checkout, and it's what's already printed on the kitchen
+  // ticket (see printOnlineOrderKitchenTicket's KIO/WEB-prefixed num, same
+  // digits). Falls back to the till's counter if daily_num is missing
+  // (server predates that column) so this never breaks on an old order.
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now.toLocaleDateString('fr-TN'),time:now.toLocaleTimeString('fr-TN'),
     items:saleItems,s,d,disc,g,payMode,r,monnaie,
     businessDate,
     type:orderType,cliName:document.getElementById('cli-name')?.value||'',
     cliTel:document.getElementById('cli-tel')?.value||'',
     cashier:USERS[currentUser].name,
-    sessionId:currentSession?.sid||''};
+    sessionId:currentSession?.sid||'',
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale){
     try{
       const saved = await window.electronAPI.saveSale(od);
@@ -3368,7 +3377,11 @@ function encaisser(){
       flash('⚠ Vente en mémoire seulement — SQLite indisponible');
     }
   }
-  hist.push(od);daily+=g;lastOrderData=od;orderNum++;
+  // Finalizing an accepted online order isn't "the next counter order" — it
+  // already has its own number (onlineNum, set above). Advancing the till's
+  // local counter here too would create a gap the next TYPED order jumps
+  // over for no reason (this order never actually used that number).
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum++;
   document.getElementById('dt').textContent=`Ventes du jour : ${f(daily)} DT`;
   // Hold the final total long enough for the customer to read it, then let
   // pushPoleTotal() blank the display — the basket is empty by then, so it clears
@@ -5390,7 +5403,22 @@ async function pollOnlineOrders(){
     updateOnlineOrdersBadge();
     const currentIds = new Set(onlineOrdersPending.map(o=>String(o.id)));
     const freshOnes = onlineOrdersPending.filter(o=>!_prevPendingOrderIds.has(String(o.id)));
-    if(freshOnes.length){ playOrderChime(); freshOnes.forEach(o=>showNewOrderToast(o)); }
+    if(freshOnes.length){
+      playOrderChime();
+      freshOnes.forEach(o=>{
+        showNewOrderToast(o);
+        // A kiosk order was placed by a customer standing right here — there's
+        // nothing for staff to review or reject, unlike a remote /moi order
+        // (which stays in the queue for a real Accepter/Refuser decision).
+        // Toast and Square both route kiosk orders straight to the kitchen
+        // the instant they're submitted, no manual gate — this matches that,
+        // and it's what makes the order number final immediately instead of
+        // staying "provisional" until someone eventually notices and clicks
+        // Accepter (the actual root of the kiosk-number-vs-receipt-number
+        // mismatch this whole numbering fix was about).
+        if(o.source==='kiosk'){ acceptOnlineOrder(o.id).catch(()=>{}); }
+      });
+    }
     _prevPendingOrderIds = currentIds;
   }catch(e){ /* offline — retried on next poll */ }
 }
@@ -5580,8 +5608,13 @@ function finalizeOnlinePaidOrderSale(order){
   let saleMargin=0;
   saleItems.forEach(it=>{const mi=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);if(mi&&mi.cost)saleMargin+=(it.p-mi.cost)*it.qty;});
   const now=new Date();
+  // Same number the customer already saw at kiosk/moi checkout (and that's
+  // already on the kitchen ticket printed at accept time) — not a fresh
+  // number off the till's own counter. See encaisser() for the full
+  // reasoning; this is the wallet-prepaid twin of that same fix.
+  const onlineNum = order.daily_num!=null ? order.daily_num : null;
   const od={
-    num:currentOrderNum, margin:saleMargin, cogs,
+    num:onlineNum!=null?onlineNum:currentOrderNum, margin:saleMargin, cogs,
     date:now.toLocaleDateString('fr-TN'), time:now.toLocaleTimeString('fr-TN'),
     items:saleItems, s, d:0, disc:0, g, payMode:'wallet', r:0, monnaie:0,
     businessDate:todayKey(),
@@ -5590,11 +5623,14 @@ function finalizeOnlinePaidOrderSale(order){
     cashier: USERS[currentUser]?.name||'',
     sessionId: currentSession?.sid||'',
     onlineOrderId: order.id,
+    source: order.source||'moi',
   };
   if(window.electronAPI?.saveSale) window.electronAPI.saveSale(od);
   hist.push(od); daily+=g; lastOrderData=od;
-  orderNum = Math.max(orderNum, currentOrderNum) + 1;
-  currentOrderNum = orderNum;
+  if(onlineNum==null){
+    orderNum = Math.max(orderNum, currentOrderNum) + 1;
+    currentOrderNum = orderNum;
+  }
   const dtEl=document.getElementById('dt');
   if(dtEl) dtEl.textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
@@ -5603,8 +5639,10 @@ function finalizeOnlinePaidOrderSale(order){
     showReceipt(od);
     autoPrintAll(od, true); // kitchen ticket already printed at accept
   }
-  var onumEl=document.getElementById('onum');
-  if(onumEl) onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');
+  if(onlineNum==null){
+    var onumEl=document.getElementById('onum');
+    if(onumEl) onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');
+  }
   saveState();
 }
 async function acceptOnlineOrder(id){
@@ -5664,7 +5702,12 @@ async function encaisserOnlineOrder(id){
   cliName = order.client_name||''; cliTel = order.client_phone||'';
   const cn=document.getElementById('cli-name'), ct=document.getElementById('cli-tel');
   if(cn) cn.value=cliName; if(ct) ct.value=cliTel;
-  pendingOnlineOrderPayment = { id: order.id };
+  // dailyNum/source ride along so the sale encaisser() is about to create
+  // uses THIS order's own number (what the customer already saw at kiosk/moi
+  // checkout) instead of drawing a fresh one from the till's own counter —
+  // that mismatch (customer told "#3", receipt says "#47") was the actual
+  // bug report this fixes.
+  pendingOnlineOrderPayment = { id: order.id, dailyNum: order.daily_num, source: order.source };
   renderOrd(); saveState();
   destroySessionModal();
   flash('✓ Commande de '+cliName+' chargée — encaissez pour finaliser');
