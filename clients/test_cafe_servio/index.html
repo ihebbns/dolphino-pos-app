@@ -6190,12 +6190,19 @@ async function markOnlineOrderPaid(id, silent){
 // Builds a kitchen-only ticket from an online order's raw items — reuses the
 // same zone-split printer routing as a normal sale (autoPrintKitchen), just
 // fed a synthetic order object since no sale/stock movement exists yet.
-// num is prefixed 'WEB' (not a plain digit sequence) so kitchen staff can
-// tell at a glance this didn't come from the till's own order counter.
+// num is prefixed 'KIO'/'WEB' (never a plain digit sequence) so kitchen
+// staff — and the public pickup board, which parses this same prefix — can
+// tell at a glance this didn't come from the till's own order counter, and
+// which channel it came from. Uses daily_num (small, resets each day, what
+// the customer's own confirmation screen already showed) rather than the
+// order's raw database id — falls back to the id only for an order synced
+// from a server that predates daily_num.
 function printOnlineOrderKitchenTicket(order){
+  const prefix = order.source === 'kiosk' ? 'KIO' : 'WEB';
+  const displayNum = String(order.daily_num != null ? order.daily_num : order.id);
   const od = {
     type: order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'),
-    num: 'WEB'+String(order.id).padStart(3,'0'),
+    num: prefix+displayNum.padStart(3,'0'),
     cliName: order.client_name||'', cliTel: order.client_phone||'',
     // it.cat: the category the item was ordered under, now sent by the
     // public order endpoint. Without it, EVERY zone check in autoPrintKitchen
