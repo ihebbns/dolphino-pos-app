@@ -333,9 +333,18 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
   #print-area{display:block!important;font-family:'Courier New',monospace;font-size:12px;color:#000;background:#fff;}
 }
 #print-area{display:none;}
+
+/* ── new online order: corner toast + pulsing header button ─────────────── */
+#ooo-toast-stack{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:280px;}
+.ooo-toast{background:var(--panel);border:1px solid var(--gold);border-left:4px solid var(--gold);border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:oooSlideIn .25s ease-out;}
+@keyframes oooSlideIn{from{opacity:0;transform:translateX(24px);}to{opacity:1;transform:translateX(0);}}
+#btn-online-orders.ooo-pulsing{animation:glowPulse 1.4s infinite;}
 </style>
 </head>
 <body>
+
+<!-- ══ NEW ONLINE ORDER TOASTS — corner alert so a fresh order is never missed ══ -->
+<div id="ooo-toast-stack"></div>
 
 <!-- ══ REMOTE LOCK ══ -->
 <div id="remote-lock">
@@ -5362,6 +5371,11 @@ let onlineOrdersPreparing = [];
 // for checkout — read by autoPrintAll() to skip re-printing its kitchen
 // ticket and to auto-mark it paid once the sale actually completes.
 let pendingOnlineOrderPayment = null;
+// Diffed against the PREVIOUS poll (not "ever seen") — so a genuinely new
+// order always alerts, even the very first poll after opening the app (any
+// order waiting while nobody was watching still deserves an alert), while a
+// replayed/unchanged poll never re-alerts for the same order twice.
+let _prevPendingOrderIds = new Set();
 async function pollOnlineOrders(){
   if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
   try{
@@ -5374,10 +5388,15 @@ async function pollOnlineOrders(){
     onlineOrdersUnpaid = Array.isArray(data.unpaid) ? data.unpaid : [];
     onlineOrdersPreparing = Array.isArray(data.preparing) ? data.preparing : [];
     updateOnlineOrdersBadge();
+    const currentIds = new Set(onlineOrdersPending.map(o=>String(o.id)));
+    const freshOnes = onlineOrdersPending.filter(o=>!_prevPendingOrderIds.has(String(o.id)));
+    if(freshOnes.length){ playOrderChime(); freshOnes.forEach(o=>showNewOrderToast(o)); }
+    _prevPendingOrderIds = currentIds;
   }catch(e){ /* offline — retried on next poll */ }
 }
 function updateOnlineOrdersBadge(){
   const b = document.getElementById('ooo-badge');
+  const btn = document.getElementById('btn-online-orders');
   if(!b) return;
   // unpaid and preparing overlap heavily (same order can need both a
   // payment AND a ready-mark) — count distinct orders, not a naive sum.
@@ -5385,6 +5404,40 @@ function updateOnlineOrdersBadge(){
   const n = onlineOrdersPending.length + actionable.size;
   b.textContent = n;
   b.style.display = n>0 ? '' : 'none';
+  // The badge alone is passive — a cashier mid-transaction can miss a count
+  // changing. A slow pulsing glow on the button itself keeps it in the
+  // corner of the eye without being as intrusive as a permanent toast.
+  if(btn) btn.classList.toggle('ooo-pulsing', n>0);
+}
+// ── New online order: audible chime + a corner toast that can't be missed ──
+function playOrderChime(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.16].forEach((t, i)=>{
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = i===0 ? 880 : 1108;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime+t);
+      gain.gain.exponentialRampToValueAtTime(0.28, ctx.currentTime+t+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+t+0.35);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(ctx.currentTime+t); osc.stop(ctx.currentTime+t+0.4);
+    });
+  }catch(e){ /* audio blocked (e.g. no user gesture yet) — the toast still shows */ }
+}
+function showNewOrderToast(order){
+  const stack = document.getElementById('ooo-toast-stack');
+  if(!stack) return;
+  const typeLabel = order.order_type==='livraison'?'🛵 Livraison':(order.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+  const el = document.createElement('div');
+  el.className = 'ooo-toast';
+  el.innerHTML = `
+    <div style="font-weight:800;font-size:13px;margin-bottom:2px">🌐 Nouvelle commande en ligne</div>
+    <div style="font-size:12px;margin-bottom:8px">${order.client_name||'Client'} · ${typeLabel} · <strong>${f(order.total)} DT</strong></div>
+    <button style="width:100%;padding:7px;background:linear-gradient(135deg,var(--gold),var(--gold-l));border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Voir</button>
+  `;
+  el.querySelector('button').onclick = () => { showOnlineOrders(); el.remove(); };
+  stack.appendChild(el);
+  setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 14000);
 }
 function showOnlineOrders(){
   const rows = onlineOrdersPending.length ? onlineOrdersPending.map(o=>{
