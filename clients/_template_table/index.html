@@ -3815,13 +3815,14 @@ function saveKdsTickets(){ try{ localStorage.setItem(KDS_KEY, JSON.stringify(_kd
 
 function kdsAddTicket(od, zoneItems, zoneLabel, zoneKey){
   if(!zoneItems || !zoneItems.length) return;
-  _kdsTickets.push({
+  var ticket = {
     id: 'k'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
-    num: od.num, tblNum: od.tblNum||null, tblSec: od.tblSec||null,
+    num: od.num, tblNum: od.tblNum||null, tblSec: od.tblSec||null, cliName: od.cliName||'',
     zone: zoneKey, zoneLabel: zoneLabel,
     items: zoneItems.map(function(it){ return {name:it.name, qty:it.qty, variant:it.variant||'', note:it.note||''}; }),
     sentAt: Date.now(), bumped:false, bumpedAt:null,
-  });
+  };
+  _kdsTickets.push(ticket);
   // A live work queue, not a permanent log (sales/audit records already are
   // that) — prune bumped tickets after 24h so localStorage doesn't grow forever.
   var cutoff = Date.now() - 24*3600*1000;
@@ -3830,6 +3831,74 @@ function kdsAddTicket(od, zoneItems, zoneLabel, zoneKey){
   updateKdsBadge();
   var overlay = document.getElementById('kds-overlay');
   if(overlay && overlay.style.display!=='none') renderKdsScreen();
+  pushKdsTicket(ticket);
+}
+
+// ── Cloud-synced KDS (see /api/me/kds) ──────────────────────────────────
+// localStorage alone means a ticket bumped on THIS till never tells a
+// separate physical kitchen screen (see servio.tn/kitchen/<slug>) it's
+// done, and vice versa. These push whatever just happened here to the
+// server; pollKdsTickets() below pulls back whatever happened elsewhere.
+// Both fire-and-forget — a flaky connection degrades to "this till's own
+// local KDS still works exactly as before", never a hard failure.
+function pushKdsTicket(t){
+  if(typeof SYNC_ENABLED==='undefined' || !SYNC_ENABLED) return;
+  try{
+    fetch(SYNC_API_URL.replace('/api/sync','/api/me/kds'), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ key: SYNC_API_KEY, action:'add', ticket: {
+        key: t.id, num: t.num, tblNum: t.tblNum||undefined, tblSec: t.tblSec||undefined,
+        cliName: t.cliName||'', zone: t.zone, zoneLabel: t.zoneLabel, items: t.items, sentAt: t.sentAt,
+      }}),
+    }).catch(function(){});
+  }catch(e){}
+}
+function pushKdsBump(ticketKey){
+  if(typeof SYNC_ENABLED==='undefined' || !SYNC_ENABLED) return;
+  try{
+    fetch(SYNC_API_URL.replace('/api/sync','/api/me/kds'), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ key: SYNC_API_KEY, action:'bump', ticket_key: ticketKey, actor: USERS[currentUser]?.name||'' }),
+    }).catch(function(){});
+  }catch(e){}
+}
+// Pulls whatever changed elsewhere (another till, or a browser-based
+// kitchen screen) since this device last checked. Only ever ADDS tickets
+// this device hasn't seen yet, or flips bumped false→true — never
+// resurrects a locally-bumped ticket, since bump is a one-way transition.
+async function pollKdsTickets(){
+  if(typeof SYNC_ENABLED==='undefined' || !SYNC_ENABLED) return;
+  try{
+    const res = await fetch(SYNC_API_URL.replace('/api/sync','/api/me/kds') + '?key=' + SYNC_API_KEY, {
+      headers: { 'X-Api-Key': SYNC_API_KEY }
+    });
+    const data = await res.json();
+    if(!data || !data.ok || data.ready===false) return;
+    var serverTickets = Array.isArray(data.tickets) ? data.tickets : [];
+    var localById = {};
+    _kdsTickets.forEach(function(t){ localById[t.id]=t; });
+    var changed = false;
+    serverTickets.forEach(function(st){
+      var lt = localById[st.id];
+      if(!lt){
+        _kdsTickets.push({
+          id:st.id, num:st.num, tblNum:st.tblNum||null, tblSec:st.tblSec||null, cliName:st.cliName||'',
+          zone:st.zone, zoneLabel:st.zoneLabel, items:st.items||[],
+          sentAt:st.sentAt, bumped:!!st.bumped, bumpedAt:st.bumpedAt||null,
+        });
+        changed = true;
+      } else if(st.bumped && !lt.bumped){
+        lt.bumped = true; lt.bumpedAt = st.bumpedAt || Date.now();
+        changed = true;
+      }
+    });
+    if(changed){
+      saveKdsTickets();
+      updateKdsBadge();
+      var overlay = document.getElementById('kds-overlay');
+      if(overlay && overlay.style.display!=='none') renderKdsScreen();
+    }
+  }catch(e){ /* offline — retried on next poll */ }
 }
 
 function kdsElapsedMinutes(sentAt){ return Math.max(0, Math.floor((Date.now()-sentAt)/60000)); }
@@ -3883,6 +3952,7 @@ window.showKdsOverlay = function(){
   el.style.display = 'flex';
   renderKdsZoneTabs();
   renderKdsScreen();
+  pollKdsTickets(); // fresh pull the moment staff opens this screen
   // Re-render on a timer so elapsed-time colors climb (green→orange→red)
   // even if nothing new gets sent while the screen is left open.
   if(_kdsTimer) clearInterval(_kdsTimer);
@@ -3901,6 +3971,7 @@ window.kdsBump = function(id){
   saveKdsTickets();
   updateKdsBadge();
   renderKdsScreen();
+  pushKdsBump(id);
   // This is the diagram's "cuisine touches order OK" step — once every zone's
   // ticket for a given table/order is bumped, nothing is still cooking, so the
   // customer/staff-facing Ready-Board can light up. A table can have several
@@ -7839,6 +7910,16 @@ if(typeof SYNC_ENABLED !== 'undefined' && SYNC_ENABLED){
 if(typeof SYNC_ENABLED !== 'undefined' && SYNC_ENABLED){
   setTimeout(()=>{ try{ pollOnlineOrders(); }catch(e){} }, 6000);
   setInterval(()=>{ try{ pollOnlineOrders(); }catch(e){} }, 25000);
+}
+
+// ── Poll cloud-synced KDS tickets (offline-safe) ──
+// Keeps this till's own KDS overlay converged with whatever a separate
+// kitchen screen (servio.tn/kitchen/<slug>) or another till bumped —
+// see pollKdsTickets(). Runs continuously, not just while the overlay is
+// open, so the badge count stays accurate even before staff opens it.
+if(typeof SYNC_ENABLED !== 'undefined' && SYNC_ENABLED){
+  setTimeout(()=>{ try{ pollKdsTickets(); }catch(e){} }, 7000);
+  setInterval(()=>{ try{ pollKdsTickets(); }catch(e){} }, 8000);
 }
 
 // ── Printer-failure banner ──────────────────────────────────────────────
