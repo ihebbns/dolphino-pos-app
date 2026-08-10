@@ -3489,7 +3489,7 @@ function kdsAddTicket(od, zoneItems, zoneLabel, zoneKey){
   if(!zoneItems || !zoneItems.length) return;
   var ticket = {
     id: 'k'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
-    num: od.num, cliName: od.cliName||'',
+    num: od.num, cliName: od.cliName||'', onlineOrderId: od.onlineOrderId||null,
     zone: zoneKey, zoneLabel: zoneLabel,
     items: zoneItems.map(function(it){ return {name:it.name, qty:it.qty, variant:it.variant||'', note:it.note||''}; }),
     sentAt: Date.now(), bumped:false, bumpedAt:null,
@@ -3645,13 +3645,16 @@ window.kdsBump = function(id){
   renderKdsScreen();
   pushKdsBump(id);
   // Every ticket for this order-num bumped → nothing still cooking. Only
-  // matters for real online orders (num tagged 'WEB007' by
-  // printOnlineOrderKitchenTicket) — a regular in-store sale's ticket has
-  // nothing waiting on it once bumped.
+  // matters for real online orders — t.onlineOrderId is the order's actual
+  // online_orders.id (set in kdsAddTicket from printOnlineOrderKitchenTicket),
+  // NOT parsed back out of the display num, which since daily_num became the
+  // displayed number ('WEB502') is a small per-day counter, not the real id —
+  // parsing it as if it were the id silently called markReady on the wrong
+  // (usually nonexistent) order every time. A regular in-store sale's ticket
+  // has nothing waiting on it once bumped (onlineOrderId stays null).
   var stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.num===t.num; });
-  var realId = (typeof t.num==='string' && t.num.slice(0,3)==='WEB') ? parseInt(t.num.slice(3),10) : null;
-  if(!stillPending && realId && typeof _kdsMarkOnlineOrderReadySilent==='function'){
-    _kdsMarkOnlineOrderReadySilent(realId);
+  if(!stillPending && t.onlineOrderId && typeof _kdsMarkOnlineOrderReadySilent==='function'){
+    _kdsMarkOnlineOrderReadySilent(t.onlineOrderId);
   }
 };
 
@@ -5572,6 +5575,7 @@ function printOnlineOrderKitchenTicket(order){
   const od = {
     type: order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'),
     num: prefix+displayNum.padStart(3,'0'),
+    onlineOrderId: order.id,
     cliName: order.client_name||'', cliTel: order.client_phone||'',
     // it.cat: the category the item was ordered under, now sent by the
     // public order endpoint. Without it, EVERY zone check in autoPrintKitchen
