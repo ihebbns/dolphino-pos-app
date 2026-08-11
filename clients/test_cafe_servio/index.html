@@ -707,7 +707,7 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
            screen's primary navigation (open a check / step away from the
            floor plan), theme toggle stays visible, everything else is in ☰. -->
       <button class="hdr-btn" onclick="tblAddTableModal()" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold-l);font-weight:700">+ Table</button>
-      <button class="hdr-btn" onclick="hideTblOverlay()">🥡 Sans table</button>
+      <button class="hdr-btn" onclick="window.tblGoNoTable()">🥡 Sans table</button>
       <button class="hdr-btn" id="tbl-btn-online-orders" onclick="showOnlineOrders()" style="display:none">🌐<span id="tbl-ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn" onclick="showKdsOverlay()">🖥️<span id="tbl-kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn" onclick="showReadyBoard()">🔔<span id="tbl-ready-board-badge" style="display:none;margin-left:5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
@@ -3927,7 +3927,22 @@ window.kdsBump = function(id){
   var stillPending;
   if(t.tblNum){
     stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.tblNum===t.tblNum && x.tblSec===t.tblSec; });
-    if(!stillPending && typeof window.tblMarkReady==='function') window.tblMarkReady(t.tblNum, t.tblSec);
+    // Kitchen-internal only, same rule as the non-table branch below — bumping
+    // every ticket for a table means "done cooking," nothing more. It does
+    // NOT auto-mark the table ready or touch the ready-board on its own; the
+    // cashier makes that call explicitly with the "🔔 Prêt" button on the
+    // table bar (tblMarkReadyManual) — same "kitchen bump ≠ customer-facing
+    // ready" rule established for online orders (see kitchenStatusTag). This
+    // only flips a staff-facing marker so the floor-plan card can show the
+    // kitchen is done and the cashier knows to go press it.
+    if(!stillPending){
+      var kTbl = _tables.find(function(x){ return x.num===Number(t.tblNum) && x.sec===t.tblSec; });
+      if(kTbl && !kTbl.readyForPickup && !kTbl.kitchenDone){
+        kTbl.kitchenDone = true;
+        saveTables();
+        renderTblGrid();
+      }
+    }
   }else{
     stillPending = _kdsTickets.some(function(x){ return !x.bumped && !x.tblNum && x.num===t.num; });
     // Kitchen-internal only, on purpose — bumping every ticket for a
@@ -7043,6 +7058,24 @@ window.hideTblOverlay = function(){
   if(_tblGridClockTimer){ clearInterval(_tblGridClockTimer); _tblGridClockTimer = null; }
 };
 
+// "🥡 Sans table" — hideTblOverlay() alone only dismisses the floor plan, it
+// never clears _activeTable. Without this, leaving the plan after having
+// touched ANY table (even just to glance at it) left the till still bound to
+// that table, so the very next takeaway sale kept getting gated behind
+// Addition/Envoyer as if it were that table's order. The table's own
+// in-progress items are untouched (already persisted by _tblSyncItems on
+// every cart change) — this only detaches the till and starts a fresh cart.
+window.tblGoNoTable = function(){
+  if(_activeTable){
+    _activeTable = null;
+    items = []; disc = 0;
+    document.getElementById('btn-tables') && (document.getElementById('btn-tables').style.outline='none');
+    if(typeof renderOrd==='function') renderOrd();
+  }
+  hideTblOverlay();
+  updateTblBar();
+};
+
 // ── Table ⇒ Table transfer (customers change tables mid-order) ──
 window.tblStartTransfer = function(){
   if(!_activeTable){ flash('Sélectionnez une table avant de transférer.'); return; }
@@ -7130,6 +7163,11 @@ function renderTblGrid(){
               tbl.status==='sent'?'<div class="tbl-dot tbl-dot-green"></div>':
               tbl.status==='bill'?'<div class="tbl-dot tbl-dot-orange"></div>':'';
     var badge = tbl.items.length>0?'<div class="tbl-badge">'+tbl.items.length+'</div>':'';
+    // Staff-facing only — never auto-triggers anything, the cashier still has
+    // to tap "🔔 Prêt" on the table bar. Without this the manual button's only
+    // feedback was a 2.5s toast, which read as "did nothing" once it faded.
+    var readyMark = tbl.readyForPickup ? '<div class="tbl-ready-mark" style="position:absolute;top:6px;right:6px;font-size:16px" title="Prête — à servir">🔔</div>'
+                    : tbl.kitchenDone ? '<div class="tbl-ready-mark" style="position:absolute;top:6px;right:6px;font-size:16px" title="Cuisine terminée — pas encore marquée prête">✅</div>' : '';
     var tot = tbl.status!=='free'?'<div class="tbl-tot">'+tblTotal(tbl).toFixed(3)+' DT</div>':'';
     var sub = tbl.status!=='free'?'<div class="tbl-sub">'+tblStatusLabel(tbl.status)+'</div>':'<div class="tbl-sub">'+tbl.sec+'</div>';
     var foot = '';
@@ -7138,7 +7176,7 @@ function renderTblGrid(){
       foot = '<div class="tbl-foot">'+(elapsedStr?'<span>🕐 '+elapsedStr+'</span>':'')+
              '<span class="tbl-who"><span class="tbl-av">'+(tbl.by.charAt(0)||'?')+'</span>'+tbl.by+'</span></div>';
     }
-    return '<div class="'+cls+'" onclick="window._tblSelect(\''+tblEsc(tbl.id)+'\')">'+dot+badge+'<div class="tbl-icon">🍽️</div><div class="tbl-num">Table '+tbl.num+'</div>'+sub+tot+foot+'</div>';
+    return '<div class="'+cls+'" onclick="window._tblSelect(\''+tblEsc(tbl.id)+'\')">'+dot+badge+readyMark+'<div class="tbl-icon">🍽️</div><div class="tbl-num">Table '+tbl.num+'</div>'+sub+tot+foot+'</div>';
   }).join('');
 }
 
@@ -7410,6 +7448,7 @@ window.tblSendKitchen = function(){
   };
   if(typeof autoPrintKitchen === 'function') autoPrintKitchen(od);
   tbl.status = 'sent';
+  tbl.kitchenDone = false; // fresh items just went to kitchen — any earlier "done" marker no longer holds
   tbl.sentItems = items.map(function(it){ return {key:it.key, qty:it.qty}; });
   tblAudit(tbl, 'sent_kitchen', newItems.map(function(it){ return it.qty+'x '+it.name; }).join(', '));
   saveTables();
