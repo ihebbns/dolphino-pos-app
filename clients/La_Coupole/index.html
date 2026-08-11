@@ -510,6 +510,13 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
         <button class="pb on" id="p-cash" onclick="selPay('cash',this)"><span class="pi">💵</span>Espèces</button>
         <button class="pb" id="p-credit" onclick="selPay('credit',this)"><span class="pi">📒</span>Crédit</button>
         <button class="pb" id="p-wallet" onclick="selPay('wallet',this)"><span class="pi">💳</span>Solde fidélité</button>
+        <!-- Only for a loaded online order (see encaisserOnlineOrder) — money
+             already changed hands outside the till (e.g. paid the delivery
+             driver, bank transfer). Still a REAL sale: numbered, stock
+             deducted, cashier+timestamp on record — no drawer kick since
+             no cash is arriving now. Hidden otherwise so it can't be used
+             for an ordinary order, where "already paid" makes no sense. -->
+        <button class="pb" id="p-settled" onclick="selPay('settled',this)" style="display:none"><span class="pi">✅</span>Déjà réglée</button>
       </div>
       <div id="cs">
         <div class="ci-row"><span class="ci-lbl">Reçu (DT)</span><input class="ci" type="number" id="cr" placeholder="0.000" step="0.001" oninput="calcM()" onfocus="this.select()" inputmode="decimal" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false"></div>
@@ -671,6 +678,10 @@ const CLIENT_CONFIG = {
   boissonCats: ['Boisson'],
   zone1Label:  'CUISINE 1 — Pizza / Chapati / Baguette / Makloub',
   zone2Label:  'CUISINE 2 — Libanais / Sandwichs / Tacos / Plat / Brik',
+  // 'both' | 'ticket' | 'screen' — set in /admin, applied by checkLicense().
+  // autoPrintKitchen() reads this to decide whether an order prints a
+  // paper ticket, feeds the KDS screen, or both.
+  kitchenOutputMode: 'both',
 };
 
 const SYNC_ENABLED = CLIENT_CONFIG.syncEnabled;
@@ -3174,7 +3185,7 @@ function renderOrd(){
 }
 function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
 function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;const hadOnlineOrder=!!pendingOnlineOrderPayment;if(pendingOnlineOrderPayment)postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));if(hadOnlineOrder){const onumEl=document.getElementById('onum');if(onumEl)onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');}renderOrd();saveState();}}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;const hadOnlineOrder=!!pendingOnlineOrderPayment;if(pendingOnlineOrderPayment)postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));if(hadOnlineOrder){const onumEl=document.getElementById('onum');if(onumEl)onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');const settledBtn=document.getElementById('p-settled');if(settledBtn){settledBtn.style.display='none';if(payMode==='settled'){payMode='cash';document.getElementById('p-cash')?.click();}}}renderOrd();saveState();}}
 
 // ═══════════════ HELD COUNTER ORDERS ═══════════════
 // A held order is only a saved draft. It cannot print, affect cash, create a
@@ -3340,6 +3351,11 @@ function encaisser(){
   const g=getGrand(),s=items.reduce((a,i)=>a+i.p*i.qty,0),d=s-g;
   if(payMode==='credit'){ showCreditSelector(); return; }
   if(payMode==='wallet'){ showWalletSelector(); return; }
+  // "Déjà réglée" only ever makes sense for a loaded online order (money
+  // already changed hands outside the till) — the button that sets this is
+  // hidden otherwise, but fall back to cash defensively rather than trust
+  // client-side visibility alone as the only guard.
+  if(payMode==='settled' && !pendingOnlineOrderPayment) payMode='cash';
   // ── Cash drawer: fire as EARLY as possible, fire-and-forget ──────────
   // Kick the drawer the instant the sale is confirmed so saving the sale,
   // printing, and the UI never wait on it. Policy (cash-decoupled from print):
@@ -3726,6 +3742,15 @@ function kitchenTicketHTML(od, zoneItems, zoneLabel){
 }
 
 function autoPrintKitchen(od){
+  // Free choice, set in /admin — read LIVE (not cached in a module-level
+  // const) so a checkLicense() update takes effect without a reload.
+  // 'ticket': print only, no KDS row ever created for this order (the
+  // ready board falls back to the "Marquer prêt" signal for it — see
+  // /api/public/[slug]/ready-orders). 'screen': KDS only, no paper.
+  const kitchenMode = CLIENT_CONFIG.kitchenOutputMode || 'both';
+  const wantsPrint = kitchenMode !== 'screen';
+  const wantsScreen = kitchenMode !== 'ticket';
+
   // Boisson items never go to kitchen
   const isBoisson = it => BOISSON_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c);
   const zone1Items = od.items.filter(it => !isBoisson(it) && ZONE1_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c));
@@ -3747,19 +3772,19 @@ function autoPrintKitchen(od){
   // queue should reflect the order the instant it's sent, not wait on the
   // print stagger.
   if(zone1Items.length>0){
-    kdsAddTicket(od, zone1Items, ZONE1_LABEL, 'zone1');
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL)),900);
+    if(wantsScreen) kdsAddTicket(od, zone1Items, ZONE1_LABEL, 'zone1');
+    if(wantsPrint) setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL)),900);
   }
   if(zone2Items.length>0){
-    kdsAddTicket(od, zone2Items, ZONE2_LABEL, 'zone2');
+    if(wantsScreen) kdsAddTicket(od, zone2Items, ZONE2_LABEL, 'zone2');
     const delay=zone1Items.length>0?1700:900;
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL)),delay);
+    if(wantsPrint) setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL)),delay);
   }
 }
 
 // ═══════════════ RECEIPT ═══════════════
 function showReceipt(od){
-  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',credit:'Crédit'};
+  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',credit:'Crédit',settled:'Déjà réglée'};
   const tl={place:'🏠 Sur place',take:'🥡 Emporter',del:'🛵 Livraison'};
   const lines=od.items.map(it=>`
     <div class="rr"><span>${it.qty}x ${it.name}${it.variant?' ('+it.variant+')':''}</span><span>${f(it.p*it.qty)} DT</span></div>
@@ -3796,7 +3821,7 @@ function showReceipt(od){
 
 function doPrint(){
   if(!lastOrderData)return;
-  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',credit:'Crédit'};
+  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',credit:'Crédit',settled:'Déjà réglée'};
   const tl={place:'Sur place',take:'Emporter',del:'Livraison'};
   const od=lastOrderData;
   const lines=od.items.map(it=>
@@ -4013,7 +4038,7 @@ function showDash(){
   if(!hist.length){
     tbl.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Aucune commande</td></tr>`;
   }else{
-    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',credit:'📒 Crédit'};
+    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',credit:'📒 Crédit',settled:'✅ Déjà réglée'};
     tbl.innerHTML=[...hist].reverse().map((h,idx)=>`
       <tr onclick="showOrderDetail(${hist.length-1-idx})" style="cursor:pointer">
         <td>#${String(h.num).padStart(3,'0')}</td>
@@ -4729,7 +4754,7 @@ function showHistorique(){
     return;
   }
   const tl={place:'🏠 Place',take:'🥡 Emporter',del:'🛵 Livraison'};
-  const pm={cash:'💵',card:'💳',mob:'📱',credit:'📒'};
+  const pm={cash:'💵',card:'💳',mob:'📱',credit:'📒',settled:'✅'};
   // Voided sales stay in the list (never erased) but never count toward the
   // total — same rule the live `daily` accumulator already follows.
   const total=sessionSales.filter(h=>!h.voided).reduce((a,h)=>a+h.g,0);
@@ -5524,10 +5549,14 @@ function showOnlineOrders(){
       ${lockedByOther?`<div style="font-size:10px;color:var(--orange);margin-bottom:6px">🔒 En cours à une autre caisse (${o.claimed_by})</div>`:''}
       <div style="display:flex;align-items:center;gap:10px">
         <button onclick="encaisserOnlineOrder(${o.id})" ${lockedByOther?'disabled':''} style="flex:1;padding:7px;background:${lockedByOther?'var(--card)':'linear-gradient(135deg,var(--gold),var(--gold-l))'};border:${lockedByOther?'1px solid var(--div)':'none'};border-radius:6px;color:${lockedByOther?'var(--muted)':'#fff'};font-size:11px;font-weight:700;cursor:${lockedByOther?'not-allowed':'pointer'}">🧾 Encaisser</button>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:var(--muted)" onclick="markOnlineOrderPaid(${o.id})" title="Marquer payée sans repasser par l'encaissement (cas particulier)">
-          <input type="checkbox" style="width:15px;height:15px;cursor:pointer"> déjà réglée
-        </label>
       </div>
+      <!-- No standalone "already paid" shortcut here on purpose — that used
+           to bypass the sale entirely (no revenue record, no stock
+           deduction, no receipt), which meant a cashier could pocket a
+           real cash payment and click it away with nothing showing up
+           anywhere. "Déjà réglée" is now a payment METHOD inside Encaisser
+           itself (see the p-settled button) — same real, numbered,
+           auditable sale as any other payment, just no drawer kick. -->
     </div>`;
   }).join('') : '';
 
@@ -5741,6 +5770,8 @@ async function encaisserOnlineOrder(id){
     const onumEl=document.getElementById('onum');
     if(onumEl) onumEl.textContent='#'+String(order.daily_num).padStart(3,'0');
   }
+  const settledBtn=document.getElementById('p-settled');
+  if(settledBtn) settledBtn.style.display='';
   renderOrd(); saveState();
   destroySessionModal();
   flash('✓ Commande de '+cliName+' chargée — encaissez pour finaliser');
@@ -5778,6 +5809,9 @@ async function checkLicense(){
       if(cfg.cuisine2Cats)   { CLIENT_CONFIG.zone2Cats=cfg.cuisine2Cats; CLIENT_CONFIG.zone2Label='CUISINE 2 — '+cfg.cuisine2Cats.join(' / '); }
       if(cfg.boissonCats)    CLIENT_CONFIG.boissonCats=cfg.boissonCats;
       if(cfg.phone)          CLIENT_CONFIG.phone=cfg.phone;
+      // Free choice of ticket / screen / both — set in /admin, applied here
+      // the same way zone categories are. Read by autoPrintKitchen() below.
+      if(cfg.kitchenOutputMode) CLIENT_CONFIG.kitchenOutputMode=cfg.kitchenOutputMode;
       // publicSlug isn't baked correctly into every EXE (the wizard didn't
       // always know it yet at build time), and it can change later if the
       // admin edits it in /admin — this is what makes the public ordering
