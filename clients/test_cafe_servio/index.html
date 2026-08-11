@@ -562,6 +562,13 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
         <button class="pb" id="p-card" onclick="selPay('card',this)"><span class="pi">💳</span>Carte (TPE)</button>
         <button class="pb" id="p-credit" onclick="selPay('credit',this)"><span class="pi">📒</span>Crédit</button>
         <button class="pb" id="p-wallet" onclick="selPay('wallet',this)"><span class="pi">💳</span>Solde fidélité</button>
+        <!-- Only for a loaded online order (see encaisserOnlineOrder) — money
+             already changed hands outside the till (e.g. paid the delivery
+             driver, bank transfer). Still a REAL sale: numbered, stock
+             deducted, cashier+timestamp on record — no drawer kick since
+             no cash is arriving now. Hidden otherwise so it can't be used
+             for an ordinary order, where "already paid" makes no sense. -->
+        <button class="pb" id="p-settled" onclick="selPay('settled',this)" style="display:none"><span class="pi">✅</span>Déjà réglée</button>
         <button class="pb" id="p-ticket" onclick="selPay('ticket',this)"><span class="pi">🎫</span>Ticket Restau</button>
       </div>
       <div id="cs">
@@ -817,6 +824,10 @@ const CLIENT_CONFIG = {
   boissonCats: ["Boissons"],
   zone1Label:  'BAR',
   zone2Label:  'CUISINE',
+  // 'both' | 'ticket' | 'screen' — set in /admin, applied by checkLicense().
+  // autoPrintKitchen() reads this to decide whether an order prints a
+  // paper ticket, feeds the KDS screen, or both.
+  kitchenOutputMode: 'both',
 };
 
 
@@ -2662,7 +2673,15 @@ async function hydrateBusinessState(){
       daily = mapped.filter(sale => sale.businessDate === currentDay && !sale.voided)
                     .reduce((sum, sale) => sum + (Number(sale.g) || 0), 0);
       const todaySales = mapped.filter(sale => sale.businessDate === currentDay);
-      orderNum = todaySales.length ? Math.max(...todaySales.map(sale => Number(sale.num) || 0)) + 1 : 1;
+      // An accepted online/kiosk order reuses ITS OWN daily_num (501+, see
+      // encaisser()) as its sale num instead of drawing from the till's own
+      // counter — including one of those in this max() would drag the till's
+      // counter into the online range too (e.g. after encaissing online order
+      // #504, the next regular order would become #505 instead of continuing
+      // from wherever the till actually was). Same 500 boundary the server
+      // uses to keep the two ranges apart in the first place.
+      const caisseSalesToday = todaySales.filter(sale => (Number(sale.num) || 0) < 501);
+      orderNum = caisseSalesToday.length ? Math.max(...caisseSalesToday.map(sale => Number(sale.num) || 0)) + 1 : 1;
       sqliteAvailable = true;
     }catch(error){
       console.error('SQLite load failed:', error);
@@ -3439,7 +3458,7 @@ function renderOrd(){
 }
 function chgQ(key,d){const i=items.findIndex(x=>x.key===key);if(i<0)return;items[i].qty+=d;if(items[i].qty<=0)items.splice(i,1);renderOrd();saveState();}
 function rmI(key){items=items.filter(x=>x.key!==key);renderOrd();saveState();}
-function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;if(typeof pendingOnlineOrderPayment!=='undefined' && pendingOnlineOrderPayment && typeof postOnlineOrderAction==='function')postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');if(typeof pendingOnlineOrderPayment!=='undefined')pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));renderOrd();saveState();}}
+function clearOrd(){if(!items.length)return;if(confirm('Vider la commande ?')){items=[];disc=0;const hadOnlineOrder=typeof pendingOnlineOrderPayment!=='undefined' && !!pendingOnlineOrderPayment;if(hadOnlineOrder && typeof postOnlineOrderAction==='function')postOnlineOrderAction(pendingOnlineOrderPayment.id,'release');if(typeof pendingOnlineOrderPayment!=='undefined')pendingOnlineOrderPayment=null;document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',i===0));if(hadOnlineOrder){const onumEl=document.getElementById('onum');if(onumEl)onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');const settledBtn=document.getElementById('p-settled');if(settledBtn){settledBtn.style.display='none';if(payMode==='settled'){payMode='cash';document.getElementById('p-cash')?.click();}}}renderOrd();saveState();}}
 
 // ═══════════════ NOTE ═══════════════
 function openNote(key){
@@ -3540,6 +3559,11 @@ function encaisser(){
   const g=getGrand(),s=items.reduce((a,i)=>a+i.p*i.qty,0),d=s-g;
   if(payMode==='credit'){ showCreditSelector(); return; }
   if(payMode==='wallet'){ showWalletSelector(); return; }
+  // "Déjà réglée" only ever makes sense for a loaded online order (money
+  // already changed hands outside the till) — the button that sets this is
+  // hidden otherwise, but fall back to cash defensively rather than trust
+  // client-side visibility alone as the only guard.
+  if(payMode==='settled' && !pendingOnlineOrderPayment) payMode='cash';
   // ── Cash drawer: fire as EARLY as possible, fire-and-forget ──────────
   // Kick the drawer the instant the sale is confirmed so saving the sale,
   // printing, and the UI never wait on it. Policy (cash-decoupled from print):
@@ -3556,13 +3580,25 @@ function encaisser(){
   // back to local menu cost offline). Attach per-line `c` and a total `cogs`.
   const saleItems=items.map(it=>({...it, c:costOf(it.id)}));
   const cogs=saleItems.reduce((a,i)=>a+(i.c||0)*i.qty,0);
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now.toLocaleDateString('fr-TN'),time:now.toLocaleTimeString('fr-TN'),
+  // A cart loaded from an accepted kiosk/moi order (see encaisserOnlineOrder)
+  // keeps THAT order's own number here, instead of drawing a fresh one from
+  // the till's local counter — the customer already saw this exact number at
+  // kiosk/moi checkout, and it's what's already printed on the kitchen
+  // ticket (see printOnlineOrderKitchenTicket's KIO/WEB-prefixed num, same
+  // digits). Falls back to the till's counter if daily_num is missing
+  // (server predates that column) so this never breaks on an old order.
+  // Naturally null for a table order — that path never touches
+  // pendingOnlineOrderPayment (see tblMergeOnlineOrder), so it always falls
+  // through to the till's own counter same as before.
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now.toLocaleDateString('fr-TN'),time:now.toLocaleTimeString('fr-TN'),
     items:saleItems,s,d,disc,g,payMode,r,monnaie,
     businessDate,
     type:orderType,cliName:document.getElementById('cli-name')?.value||'',
     cliTel:document.getElementById('cli-tel')?.value||'',
     cashier:USERS[currentUser].name,
-    sessionId:currentSession?.sid||''};
+    sessionId:currentSession?.sid||'',
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale){
     try{
       const saved = await window.electronAPI.saveSale(od);
@@ -3580,7 +3616,11 @@ function encaisser(){
       flash('⚠ Vente en mémoire seulement — SQLite indisponible');
     }
   }
-  hist.push(od);daily+=g;lastOrderData=od;orderNum++;
+  // Finalizing an accepted online order isn't "the next counter order" — it
+  // already has its own number (onlineNum, set above). Advancing the till's
+  // local counter here too would create a gap the next TYPED order jumps
+  // over for no reason (this order never actually used that number).
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum++;
   document.getElementById('dt').textContent=`Ventes du jour : ${f(daily)} DT`;
   // Hold the final total long enough for the customer to read it, then let
   // pushPoleTotal() blank the display — the basket is empty by then, so it clears
@@ -3593,6 +3633,11 @@ function encaisser(){
   decreaseStock(od.items);
   // ── background cloud sync (silent, never blocks the POS) ──
   syncSale(od);
+  // Computed BEFORE finalizeOnlineOrderPayment() nulls pendingOnlineOrderPayment —
+  // anything the cashier added to the cart since loading this online order
+  // never printed to the kitchen (see addedKitchenItemsSince). Always null
+  // for a table order (pendingOnlineOrderPayment never gets set there).
+  const addedKitchenItems = typeof addedKitchenItemsSince==='function' ? addedKitchenItemsSince(saleItems) : null;
   // Resolve any pending online-order payment BEFORE the print-checkbox branch
   // below (not nested inside it) — "Imprimer ticket" is a live per-sale
   // toggle, so an online order paid with it unchecked must still get marked
@@ -3611,7 +3656,7 @@ function encaisser(){
     flash('✓ Table encaissée — Commande #'+String(od.num).padStart(3,'0')+' — '+f(od.g)+' DT');
   } else if(document.getElementById('print-ticket-check')?.checked){
     showReceipt(od);
-    autoPrintAll(od, wasOnlineOrderSale);
+    autoPrintAll(od, wasOnlineOrderSale, addedKitchenItems);
     // 2) Kitchen ticket(s) auto-print right after, queued inside autoPrintAll()
   } else {
     // Cash drawer already kicked early at the top of encaisser() (fire-and-forget).
@@ -3641,6 +3686,22 @@ function encaisser(){
 // toggle, not a fixed setting, so nesting this inside autoPrintAll() (which
 // only runs when it's checked) would leave the online order permanently
 // stuck unpaid whenever a cashier happened to uncheck it.
+// Items the cashier added to the cart ON TOP of an accepted online order's
+// original items (a new item, or more of one already there) — these never
+// reached the kitchen at accept time, only the order's own items did, so
+// they need their own ticket at checkout. Must be called BEFORE
+// finalizeOnlineOrderPayment() nulls pendingOnlineOrderPayment. Returns
+// null when this isn't an online-order checkout at all (nothing to diff).
+function addedKitchenItemsSince(saleItemsList){
+  const snap = pendingOnlineOrderPayment && pendingOnlineOrderPayment.originalQtyByKey;
+  if(!snap) return null;
+  return saleItemsList.reduce(function(acc,it){
+    const already = snap[it.key]||0;
+    const extra = it.qty - already;
+    if(extra > 0) acc.push(Object.assign({}, it, {qty: extra}));
+    return acc;
+  }, []);
+}
 function finalizeOnlineOrderPayment(){
   if(!pendingOnlineOrderPayment) return null;
   const id = pendingOnlineOrderPayment.id;
@@ -3648,17 +3709,24 @@ function finalizeOnlineOrderPayment(){
   pendingOnlineOrderPayment = null;
   return id;
 }
-function autoPrintAll(od, skipKitchen){
+function autoPrintAll(od, skipKitchen, addedKitchenItems){
   // Cash drawer is now kicked early (fire-and-forget) at the top of encaisser(),
   // before the SQLite save — so it is intentionally NOT opened here anymore.
   // Client ticket prints immediately and automatically — no manual click needed.
   doPrint();
   // 3 kitchen zones (BAR / CUISINE / CHICHA) — staggered after the client ticket,
   // see delays inside autoPrintKitchen(). Already used by table orders (tblSendKitchen).
-  // skipKitchen: an online order's kitchen ticket already printed at accept
-  // time (see printOnlineOrderKitchenTicket) — reprinting it here at payment
-  // would duplicate what the kitchen already has.
-  if(skipKitchen){ /* already printed at accept */ } else { autoPrintKitchen(od); }
+  // skipKitchen: an online order's ORIGINAL items already printed to the
+  // kitchen at accept time (see printOnlineOrderKitchenTicket) — reprinting
+  // them here at payment would duplicate what the kitchen already has. If
+  // the cashier added anything on top of that order while checking out,
+  // though, that part never printed anywhere — send a ticket for just the
+  // difference (see addedKitchenItemsSince).
+  if(skipKitchen){
+    if(addedKitchenItems && addedKitchenItems.length){
+      autoPrintKitchen(Object.assign({}, od, {items: addedKitchenItems}));
+    }
+  } else { autoPrintKitchen(od); }
 }
 
 // ═══════════════ KITCHEN TICKETS (2 ZONES) ═══════════════
@@ -3724,6 +3792,7 @@ function kdsAddTicket(od, zoneItems, zoneLabel, zoneKey){
   var ticket = {
     id: 'k'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
     num: od.num, tblNum: od.tblNum||null, tblSec: od.tblSec||null, cliName: od.cliName||'',
+    onlineOrderId: od.onlineOrderId||null,
     zone: zoneKey, zoneLabel: zoneLabel,
     items: zoneItems.map(function(it){ return {name:it.name, qty:it.qty, variant:it.variant||'', note:it.note||''}; }),
     sentAt: Date.now(), bumped:false, bumpedAt:null,
@@ -3861,9 +3930,16 @@ window.kdsBump = function(id){
     if(!stillPending && typeof window.tblMarkReady==='function') window.tblMarkReady(t.tblNum, t.tblSec);
   }else{
     stillPending = _kdsTickets.some(function(x){ return !x.bumped && !x.tblNum && x.num===t.num; });
-    // Non-table online orders are tagged 'WEB007' etc (see printOnlineOrderKitchenTicket)
-    // — recover the real numeric online_orders id so we can tell the server
-    // too (the customer's /moi tracking page polls that, not this KDS board).
+    // Kitchen-internal only, on purpose — bumping every ticket for a
+    // non-table order means "done cooking," nothing more. It does NOT
+    // auto-notify the customer or touch the public pickup board (see
+    // /api/public/[slug]/ready-orders): the cashier makes that call
+    // explicitly via "✅ Marquer prêt" in Commandes en ligne (see
+    // showOnlineOrders' kitchenStatusTag, right next to that button, which
+    // reads this same _kdsTickets state to show whether kitchen is done
+    // before staff release the order). Still updates the till's own local
+    // pickup widget below — that's staff-facing visibility, not a customer
+    // notification, same category as kitchenStatusTag.
     var realId = (typeof t.num==='string' && t.num.slice(0,3)==='WEB') ? parseInt(t.num.slice(3),10) : null;
     if(!stillPending && realId){
       window._readyPickupOrders = window._readyPickupOrders || [];
@@ -3872,7 +3948,6 @@ window.kdsBump = function(id){
       }
       if(typeof _tblUpdateReadyBadge==='function') _tblUpdateReadyBadge();
       if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-      if(typeof _kdsMarkOnlineOrderReadySilent==='function') _kdsMarkOnlineOrderReadySilent(realId);
     }
   }
 };
@@ -3936,6 +4011,15 @@ window.renderKdsScreen = function(){
 };
 
 function autoPrintKitchen(od){
+  // Free choice, set in /admin — read LIVE (not cached in a module-level
+  // const) so a checkLicense() update takes effect without a reload.
+  // 'ticket': print only, no KDS row ever created for this order (the
+  // ready board falls back to the "Marquer prêt" signal for it — see
+  // /api/public/[slug]/ready-orders). 'screen': KDS only, no paper.
+  const kitchenMode = CLIENT_CONFIG.kitchenOutputMode || 'both';
+  const wantsPrint = kitchenMode !== 'screen';
+  const wantsScreen = kitchenMode !== 'ticket';
+
   // Boisson items never go to kitchen
   const isBoisson = it => BOISSON_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c);
   const zone1Items = od.items.filter(it => !isBoisson(it) && ZONE1_CATS.some(c => it.name.startsWith(c+' ') || it.cat===c));
@@ -3959,27 +4043,27 @@ function autoPrintKitchen(od){
   // staggered) — the kitchen work queue should reflect the order the instant
   // it's sent, not wait on the print stagger.
   if(zone1Items.length>0){
-    kdsAddTicket(od, zone1Items, ZONE1_LABEL, 'zone1');
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL),'zone1'),900);
+    if(wantsScreen) kdsAddTicket(od, zone1Items, ZONE1_LABEL, 'zone1');
+    if(wantsPrint) setTimeout(()=>printWindow(kitchenTicketHTML(od,zone1Items,ZONE1_LABEL),'zone1'),900);
   }
   if(zone2Items.length>0){
-    kdsAddTicket(od, zone2Items, ZONE2_LABEL, 'zone2');
+    if(wantsScreen) kdsAddTicket(od, zone2Items, ZONE2_LABEL, 'zone2');
     const delay=zone1Items.length>0?1700:900;
-    setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL),'zone2'),delay);
+    if(wantsPrint) setTimeout(()=>printWindow(kitchenTicketHTML(od,zone2Items,ZONE2_LABEL),'zone2'),delay);
   }
   if(ZONE3_CATS.length>0){
     var z3i=od.items.filter(it=>ZONE3_CATS.some(c=>it.name.startsWith(c+' ')||it.cat===c));
     if(z3i.length>0){
-      kdsAddTicket(od, z3i, ZONE3_LABEL, 'zone3');
+      if(wantsScreen) kdsAddTicket(od, z3i, ZONE3_LABEL, 'zone3');
       var d3=(zone1Items.length>0?900:0)+(zone2Items.length>0?800:0)+900;
-      setTimeout(()=>printWindow(kitchenTicketHTML(od,z3i,ZONE3_LABEL),'zone3'),d3);
+      if(wantsPrint) setTimeout(()=>printWindow(kitchenTicketHTML(od,z3i,ZONE3_LABEL),'zone3'),d3);
     }
   }
 }
 
 // ═══════════════ RECEIPT ═══════════════
 function showReceipt(od){
-  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',cheque:'Chèque',ticket:'Ticket Restau',credit:'Crédit'};
+  const pm={cash:'Espèces',card:'Carte bancaire',mob:'Mobile',cheque:'Chèque',ticket:'Ticket Restau',credit:'Crédit',settled:'Déjà réglée'};
   const tl={place:'🏠 Sur place',take:'🥡 Emporter',del:'🛵 Livraison'};
   const lines=od.items.map(it=>`
     <div class="rr"><span>${it.qty}x ${it.name}${it.variant?' ('+it.variant+')':''}</span><span>${f(it.p*it.qty)} DT</span></div>
@@ -4035,7 +4119,7 @@ function printHTML(html){
 // isReprint stamps a visible "DUPLICATA" banner so a reprint can never be
 // mistaken for a second original — standard practice on any receipt printer.
 function buildReceiptHTML(od, isReprint){
-  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',cheque:'Chèque',ticket:'Ticket Restau',credit:'Crédit'};
+  const pm={cash:'Espèces',card:'Carte',mob:'Mobile',cheque:'Chèque',ticket:'Ticket Restau',credit:'Crédit',settled:'Déjà réglée'};
   const tl={place:'Sur place',take:'Emporter',del:'Livraison'};
   const lines=od.items.map(it=>
     `<div style="display:flex;justify-content:space-between;"><span>${it.qty}x ${it.name}${it.variant?' ('+it.variant+')':''}</span><span>${f(it.p*it.qty)} DT</span></div>`+
@@ -4392,7 +4476,7 @@ function showDash(){
   if(!hist.length){
     tbl.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Aucune commande</td></tr>`;
   }else{
-    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',cheque:'🧾 Chèque',ticket:'🎫 Ticket Restau',credit:'📒 Crédit'};
+    const pm={cash:'💵 Espèces',card:'💳 Carte',mob:'📱 Mobile',cheque:'🧾 Chèque',ticket:'🎫 Ticket Restau',credit:'📒 Crédit',settled:'✅ Déjà réglée'};
     tbl.innerHTML=[...hist].reverse().map((h,idx)=>`
       <tr onclick="showOrderDetail(${hist.length-1-idx})" style="cursor:pointer${h.voided?';opacity:.55':''}">
         <td>#${String(h.num).padStart(3,'0')}</td>
@@ -5073,7 +5157,7 @@ function showHistorique(){
     return;
   }
   const tl={place:'🏠 Place',take:'🥡 Emporter',del:'🛵 Livraison'};
-  const pm={cash:'💵',card:'💳',mob:'📱',cheque:'🧾',ticket:'🎫',credit:'📒'};
+  const pm={cash:'💵',card:'💳',mob:'📱',cheque:'🧾',ticket:'🎫',credit:'📒',settled:'✅'};
   const total=sessionSales.filter(h=>!h.voided).reduce((a,h)=>a+h.g,0);
   const voidedCount=sessionSales.filter(h=>h.voided).length;
   const rows=[...sessionSales].reverse().map(h=>{
@@ -5253,10 +5337,15 @@ function confirmCreditSale(idx){
   const g=getGrand(),s=items.reduce((a,i)=>a+i.p*i.qty,0),d=s-g;
   const now2=new Date();const businessDate=todayKey();
   client.balance+=g;
+  // A cashier can pay off an accepted online order on a client's tab (credit)
+  // just as easily as cash — it needs the same number the customer already
+  // saw at kiosk/moi checkout, not a fresh one off the till's own counter
+  // (see the same pattern in encaisser()). Naturally null for a table order.
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
   // `iso` is the machine-readable instant. The date/time strings are localised
   // and cannot be parsed back into a timestamp, so the cloud needs this to order
   // history correctly after an offline spell.
-  client.history.push({type:'credit',amount:g,iso:now2.toISOString(),saleNum:orderNum,
+  client.history.push({type:'credit',amount:g,iso:now2.toISOString(),saleNum:onlineNum!=null?onlineNum:orderNum,
     by:USERS[currentUser]?.name||'',sessionId:currentSession?.sid||'',
     date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),
     items:items.map(it=>it.name+' x'+it.qty).join(', ')});
@@ -5270,12 +5359,14 @@ function confirmCreditSale(idx){
   // creditClientCid: the client's stable slug id, not just their name — void
   // needs to reliably find THIS exact client account to reverse the debt,
   // and two clients can share a display name.
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'credit',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',creditClientCid:client.cid};
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'credit',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',creditClientCid:client.cid,
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale){
     window.electronAPI.saveSale(od).then(function(saved){ if(saved && saved.id) od.id = saved.id; });
   }
-  hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
+  const addedKitchenItemsCredit = typeof addedKitchenItemsSince==='function' ? addedKitchenItemsSince(saleItems) : null;
   // Same fix as encaisser(): resolve any pending online-order payment BEFORE
   // the print-checkbox branch, unconditionally — see note there.
   const wasOnlineOrderCredit = typeof finalizeOnlineOrderPayment==='function' ? finalizeOnlineOrderPayment() : null;
@@ -5286,7 +5377,7 @@ function confirmCreditSale(idx){
   if(typeof tblActiveTable==='function' && tblActiveTable()){
     flash('✓ Table encaissée (crédit) — '+client.name);
   } else if(document.getElementById('print-ticket-check')?.checked){
-    showReceipt(od); autoPrintAll(od, wasOnlineOrderCredit);
+    showReceipt(od); autoPrintAll(od, wasOnlineOrderCredit, addedKitchenItemsCredit);
   }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
@@ -5398,6 +5489,9 @@ async function checkLicense(){
       if(cfg.cuisine2Cats)   { CLIENT_CONFIG.zone2Cats=cfg.cuisine2Cats; CLIENT_CONFIG.zone2Label='CUISINE 2 — '+cfg.cuisine2Cats.join(' / '); }
       if(cfg.boissonCats)    CLIENT_CONFIG.boissonCats=cfg.boissonCats;
       if(cfg.phone)          CLIENT_CONFIG.phone=cfg.phone;
+      // Free choice of ticket / screen / both — set in /admin, applied here
+      // the same way zone categories are. Read by autoPrintKitchen() below.
+      if(cfg.kitchenOutputMode) CLIENT_CONFIG.kitchenOutputMode=cfg.kitchenOutputMode;
       // publicSlug isn't baked correctly into every EXE (the wizard didn't
       // always know it yet at build time), and it can change later if the
       // admin edits it in /admin — this is what makes "🔗 QR codes par
@@ -5916,7 +6010,11 @@ function confirmWalletSale(idx){
   if(client.balance<g){flash('⚠ Solde insuffisant');return;}
   const now2=new Date();const businessDate=todayKey();
   client.balance-=g;
-  client.history.push({type:'spend',amount:g,iso:now2.toISOString(),saleNum:orderNum,
+  // Same reuse-the-online-order's-own-number logic as encaisser() — a
+  // cashier can pay off an accepted online order out of a client's loyalty
+  // balance just as easily as cash. Naturally null for a table order.
+  const onlineNum = pendingOnlineOrderPayment && pendingOnlineOrderPayment.dailyNum!=null ? pendingOnlineOrderPayment.dailyNum : null;
+  client.history.push({type:'spend',amount:g,iso:now2.toISOString(),saleNum:onlineNum!=null?onlineNum:orderNum,
     by:USERS[currentUser]?.name||'',sessionId:currentSession?.sid||'',
     date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),
     items:items.map(it=>it.name+' x'+it.qty).join(', ')});
@@ -5928,15 +6026,17 @@ function confirmWalletSale(idx){
   // No drawer kick — a wallet spend is not new cash, it's a balance drawn down.
   // walletClientCid: same reasoning as creditClientCid above — void needs to
   // reliably find THIS exact client's card, not just match on a display name.
-  const od={num:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'wallet',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',walletClientCid:client.cid};
+  const od={num:onlineNum!=null?onlineNum:currentOrderNum,margin:saleMargin,cogs,date:now2.toLocaleDateString('fr-TN'),time:now2.toLocaleTimeString('fr-TN'),items:saleItems,s,d,disc,g,payMode:'wallet',r:0,monnaie:0,businessDate,type:orderType,cliName:client.name,cliTel:client.phone||'',cashier:USERS[currentUser].name,sessionId:currentSession?.sid||'',walletClientCid:client.cid,
+    source: pendingOnlineOrderPayment ? (pendingOnlineOrderPayment.source||'moi') : undefined};
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
-  hist.push(od);daily+=g;lastOrderData=od;orderNum = Math.max(orderNum, currentOrderNum) + 1;
+  hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
+  const addedKitchenItemsWallet = typeof addedKitchenItemsSince==='function' ? addedKitchenItemsSince(saleItems) : null;
   // Guarded: this base doesn't have the online-orders module ported in yet
   // (it's a separate wizard feature), so the function may not exist here.
   const wasOnlineOrder = typeof finalizeOnlineOrderPayment==='function' ? finalizeOnlineOrderPayment() : null;
   od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
-  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
+  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder, addedKitchenItemsWallet); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
   syncSale(od);
@@ -6083,6 +6183,22 @@ function showNewOrderToast(order){
   stack.appendChild(el);
   setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 14000);
 }
+// Purely informational — tells the cashier whether kitchen has actually
+// bumped this order's ticket(s) yet, right next to "Marquer prêt". Never
+// triggers anything on its own; the cashier still makes the call. Only
+// meaningful for a non-table order (KIO/WEB-prefixed num) — a table order's
+// own ready flow is driven by tblMarkReady in kdsBump, not this.
+function kitchenStatusTag(o){
+  if(o.table_num || o.daily_num==null) return '';
+  const prefix = o.source==='kiosk' ? 'KIO' : 'WEB';
+  const num = prefix + String(o.daily_num).padStart(3,'0');
+  const tickets = _kdsTickets.filter(t=>t.num===num && !t.tblNum);
+  if(!tickets.length) return '';
+  const allBumped = tickets.every(t=>t.bumped);
+  return allBumped
+    ? ' · <span style="color:var(--green)">✅ Cuisine terminée</span>'
+    : ' · <span style="color:var(--orange)">🔥 En cuisine</span>';
+}
 function showOnlineOrders(){
   const rows = onlineOrdersPending.length ? onlineOrdersPending.map(o=>{
     const its = (o.items_json||[]).map(it=>`${it.qty}× ${it.name}${it.variant?' ('+it.variant+')':''}`).join(', ');
@@ -6117,17 +6233,22 @@ function showOnlineOrders(){
       ${lockedByOther?`<div style="font-size:10px;color:var(--orange);margin-bottom:6px">🔒 En cours à une autre caisse (${o.claimed_by})</div>`:''}
       <div style="display:flex;align-items:center;gap:10px">
         <button onclick="encaisserOnlineOrder(${o.id})" ${lockedByOther?'disabled':''} style="flex:1;padding:7px;background:${lockedByOther?'var(--card)':'linear-gradient(135deg,var(--gold),var(--gold-l))'};border:${lockedByOther?'1px solid var(--div)':'none'};border-radius:6px;color:${lockedByOther?'var(--muted)':'#fff'};font-size:11px;font-weight:700;cursor:${lockedByOther?'not-allowed':'pointer'}">🧾 Encaisser</button>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10px;color:var(--muted)" onclick="markOnlineOrderPaid(${o.id})" title="Marquer payée sans repasser par l'encaissement (cas particulier)">
-          <input type="checkbox" style="width:15px;height:15px;cursor:pointer"> déjà réglée
-        </label>
       </div>
+      <!-- No standalone "already paid" shortcut here on purpose — that used
+           to bypass the sale entirely (no revenue record, no stock
+           deduction, no receipt), which meant a cashier could pocket a
+           real cash payment and click it away with nothing showing up
+           anywhere. "Déjà réglée" is now a payment METHOD inside Encaisser
+           itself (see the p-settled button) — same real, numbered,
+           auditable sale as any other payment, just no drawer kick. -->
     </div>`;
   }).join('') : '';
 
   const preparingRows = onlineOrdersPreparing.length ? onlineOrdersPreparing.map(o=>{
     const typeLabel = o.table_num ? ('🍽️ Table '+o.table_num+(o.table_sec?(' — '+o.table_sec):'')) : (o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place'));
+    const kitchenTag = kitchenStatusTag(o);
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--div)">
-      <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel}${o.paid?' · <span style="color:var(--green)">payée</span>':''}</span>
+      <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel}${o.paid?' · <span style="color:var(--green)">payée</span>':''}${kitchenTag}</span>
       <div style="display:flex;gap:6px">
         ${o.table_num ? `<button onclick="window.tblGoToTableByNum(${o.table_num},'${(o.table_sec||'').replace(/'/g,"\\'")}')" style="padding:6px 10px;background:var(--card);border:1px solid var(--div);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer">🍽️</button>` : ''}
         ${o.items_json ? `<button onclick="reprintOnlineOrderTicket(${o.id})" style="padding:6px 10px;background:var(--card);border:1px solid var(--div);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer">🖨️</button>` : ''}
@@ -6157,17 +6278,6 @@ async function markOnlineOrderReady(id){
   updateOnlineOrdersBadge();
   flash('✓ Commande marquée prête');
   showOnlineOrders();
-}
-// Same server call as markOnlineOrderReady, but silent — used when the KDS
-// bump itself is what proved the order's ready (see kdsBump), which can fire
-// while a cashier is mid-checkout on a completely different sale. Popping
-// the "Commandes en ligne" modal open under them would be disruptive; the
-// 🔔 Ready-Board badge is the correct place for this to surface instead.
-async function _kdsMarkOnlineOrderReadySilent(id){
-  const ok = await postOnlineOrderAction(id,'markReady');
-  if(!ok) return;
-  onlineOrdersPreparing = onlineOrdersPreparing.filter(o=>String(o.id)!==String(id));
-  updateOnlineOrdersBadge();
 }
 async function postOnlineOrderAction(id, action){
   try{
@@ -6203,6 +6313,7 @@ function printOnlineOrderKitchenTicket(order){
   const od = {
     type: order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'),
     num: prefix+displayNum.padStart(3,'0'),
+    onlineOrderId: order.id,
     cliName: order.client_name||'', cliTel: order.client_phone||'',
     // it.cat: the category the item was ordered under, now sent by the
     // public order endpoint. Without it, EVERY zone check in autoPrintKitchen
@@ -6247,8 +6358,13 @@ function finalizeOnlinePaidOrderSale(order){
   let saleMargin=0;
   saleItems.forEach(it=>{const mi=Object.values(MENU).flatMap(c=>c.items).find(x=>x.id===it.id);if(mi&&mi.cost)saleMargin+=(it.p-mi.cost)*it.qty;});
   const now=new Date();
+  // Same number the customer already saw at kiosk/moi checkout (and that's
+  // already on the kitchen ticket printed at accept time) — not a fresh
+  // number off the till's own counter. See encaisser() for the full
+  // reasoning; this is the wallet-prepaid twin of that same fix.
+  const onlineNum = order.daily_num!=null ? order.daily_num : null;
   const od={
-    num:currentOrderNum, margin:saleMargin, cogs,
+    num:onlineNum!=null?onlineNum:currentOrderNum, margin:saleMargin, cogs,
     date:now.toLocaleDateString('fr-TN'), time:now.toLocaleTimeString('fr-TN'),
     items:saleItems, s, d:0, disc:0, g, payMode:'wallet', r:0, monnaie:0,
     businessDate:todayKey(),
@@ -6257,11 +6373,14 @@ function finalizeOnlinePaidOrderSale(order){
     cashier: USERS[currentUser]?.name||'',
     sessionId: currentSession?.sid||'',
     onlineOrderId: order.id,
+    source: order.source||'moi',
   };
   if(window.electronAPI?.saveSale) window.electronAPI.saveSale(od);
   hist.push(od); daily+=g; lastOrderData=od;
-  orderNum = Math.max(orderNum, currentOrderNum) + 1;
-  currentOrderNum = orderNum;
+  if(onlineNum==null){
+    orderNum = Math.max(orderNum, currentOrderNum) + 1;
+    currentOrderNum = orderNum;
+  }
   const dtEl=document.getElementById('dt');
   if(dtEl) dtEl.textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
@@ -6270,8 +6389,10 @@ function finalizeOnlinePaidOrderSale(order){
     showReceipt(od);
     autoPrintAll(od, true); // kitchen ticket already printed at accept
   }
-  var onumEl=document.getElementById('onum');
-  if(onumEl) onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');
+  if(onlineNum==null){
+    var onumEl=document.getElementById('onum');
+    if(onumEl) onumEl.textContent='#'+String(currentOrderNum).padStart(3,'0');
+  }
   saveState();
 }
 async function acceptOnlineOrder(id){
@@ -6365,14 +6486,32 @@ async function encaisserOnlineOrder(id){
   }
   items = (order.items_json||[]).map(it=>({
     key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
-    variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat:''
+    variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat: it.cat||''
   }));
   disc=0; payMode='cash';
   setType(order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'));
   cliName = order.client_name||''; cliTel = order.client_phone||'';
   const cn=document.getElementById('cli-name'), ct=document.getElementById('cli-tel');
   if(cn) cn.value=cliName; if(ct) ct.value=cliTel;
-  pendingOnlineOrderPayment = { id: order.id };
+  // dailyNum/source ride along so the sale encaisser() is about to create
+  // uses THIS order's own number (what the customer already saw at kiosk/moi
+  // checkout) instead of drawing a fresh one from the till's own counter —
+  // that mismatch (customer told "#3", receipt says "#47") was the actual
+  // bug report this fixes. originalQtyByKey is the snapshot
+  // addedKitchenItemsSince() diffs against if the cashier adds anything.
+  pendingOnlineOrderPayment = { id: order.id, dailyNum: order.daily_num, source: order.source,
+    originalQtyByKey: Object.fromEntries(items.map(it=>[it.key, it.qty])) };
+  // The header must show THIS order's own number the instant it's loaded —
+  // leaving it on the till's generic next-counter number (e.g. "#3") while
+  // the cart actually holds order #502 is exactly the two-different-numbers
+  // confusion that started this fix. One screen, one number, always matching
+  // what the customer already saw and what's about to print.
+  if(order.daily_num!=null){
+    const onumEl=document.getElementById('onum');
+    if(onumEl) onumEl.textContent='#'+String(order.daily_num).padStart(3,'0');
+  }
+  const settledBtn=document.getElementById('p-settled');
+  if(settledBtn) settledBtn.style.display='';
   renderOrd(); saveState();
   destroySessionModal();
   flash('✓ Commande de '+cliName+' chargée — encaissez pour finaliser');
