@@ -451,6 +451,18 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
   </div>
 </header>
 
+<!-- Ready-for-pickup notification bar — kitchen finished an order (see
+     pollOnlineOrders' onlineOrdersReady) but nothing in the till itself
+     used to say so; a cashier only found out from the physical pickup
+     board or the kitchen shouting. In normal document flow (not fixed)
+     so it never fights with print-fail-banner above for the same strip
+     of screen — it just pushes #main down while it's showing. -->
+<div id="ready-orders-bar" style="display:none;background:linear-gradient(135deg,#16A34A,#22C55E);color:#fff;padding:9px 16px;font-size:12px;font-weight:700;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+  <span>✅</span>
+  <span id="ready-orders-bar-msg"></span>
+  <button onclick="dismissReadyOrdersBar()" style="background:rgba(255,255,255,.22);border:none;border-radius:6px;color:#fff;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">OK</button>
+</div>
+
 <!-- ══ MAIN ══ -->
 <div id="main" style="display:none">
 
@@ -5437,6 +5449,10 @@ let pendingOnlineOrderPayment = null;
 // order waiting while nobody was watching still deserves an alert), while a
 // replayed/unchanged poll never re-alerts for the same order twice.
 let _prevPendingOrderIds = new Set();
+// Orders the kitchen has finished (ready=TRUE) — see the "ready" list added
+// to /api/me/online-orders. Diffed the same way as pending orders, below.
+let onlineOrdersReady = [];
+let _prevReadyOrderIds = new Set();
 async function pollOnlineOrders(){
   if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
   try{
@@ -5448,6 +5464,7 @@ async function pollOnlineOrders(){
     onlineOrdersPending = Array.isArray(data.pending) ? data.pending : [];
     onlineOrdersUnpaid = Array.isArray(data.unpaid) ? data.unpaid : [];
     onlineOrdersPreparing = Array.isArray(data.preparing) ? data.preparing : [];
+    onlineOrdersReady = Array.isArray(data.ready) ? data.ready : [];
     updateOnlineOrdersBadge();
     const currentIds = new Set(onlineOrdersPending.map(o=>String(o.id)));
     const freshOnes = onlineOrdersPending.filter(o=>!_prevPendingOrderIds.has(String(o.id)));
@@ -5468,7 +5485,38 @@ async function pollOnlineOrders(){
       });
     }
     _prevPendingOrderIds = currentIds;
+    updateReadyOrdersBar();
+    const readyCurrentIds = new Set(onlineOrdersReady.map(o=>String(o.id)));
+    const freshReady = onlineOrdersReady.filter(o=>!_prevReadyOrderIds.has(String(o.id)));
+    if(freshReady.length) playOrderChime();
+    _prevReadyOrderIds = readyCurrentIds;
   }catch(e){ /* offline — retried on next poll */ }
+}
+// Cashier can dismiss the bar for THIS poll cycle without the order itself
+// changing state server-side — it just comes back the next time a truly
+// NEW order becomes ready (see the id-diffing above), same as re-showing
+// after a page reload. Not a "seen it forever" flag on purpose: a missed
+// pickup staying visible is safer than one silently going quiet.
+let _readyBarDismissedFor = '';
+function dismissReadyOrdersBar(){
+  _readyBarDismissedFor = onlineOrdersReady.map(o=>o.id).join(',');
+  const bar = document.getElementById('ready-orders-bar');
+  if(bar) bar.style.display = 'none';
+}
+function updateReadyOrdersBar(){
+  const bar = document.getElementById('ready-orders-bar');
+  const msg = document.getElementById('ready-orders-bar-msg');
+  if(!bar || !msg) return;
+  const key = onlineOrdersReady.map(o=>o.id).join(',');
+  if(!onlineOrdersReady.length){ bar.style.display='none'; return; }
+  if(key === _readyBarDismissedFor){ bar.style.display='none'; return; }
+  const labels = onlineOrdersReady.slice(0,4).map(o=>{
+    const num = o.daily_num!=null ? o.daily_num : o.id;
+    return '#'+num+(o.client_name?' — '+o.client_name:'');
+  });
+  const extra = onlineOrdersReady.length>4 ? ' +'+(onlineOrdersReady.length-4) : '';
+  msg.textContent = (onlineOrdersReady.length>1?'Commandes prêtes : ':'Commande prête : ')+labels.join(', ')+extra;
+  bar.style.display='flex';
 }
 function updateOnlineOrdersBadge(){
   const b = document.getElementById('ooo-badge');
