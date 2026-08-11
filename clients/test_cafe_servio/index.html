@@ -719,7 +719,9 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
           <button class="hdr-menu-item" id="tbl-btn-wallet" onclick="closeTblHdrMenu();showWalletManager()">💳 Fidélité</button>
           <button class="hdr-menu-item" onclick="closeTblHdrMenu();showHistorique()">📋 Historique</button>
           <button id="tbl-btn-dash" class="hdr-menu-item" onclick="closeTblHdrMenu();showDash()" style="display:none">📊 Tableau de bord</button>
-          <button id="tbl-btn-live" class="hdr-menu-item" onclick="closeTblHdrMenu();showTblLiveOverview()" style="display:none">📡 Vue temps réel</button>
+          <!-- "📡 Vue temps réel" removed on purpose — the same live view + per-table
+               history now lives on the web dashboard (see the comment above
+               tblAuditForTable), reachable remotely without a manager at the till. -->
           <button id="tbl-btn-qr" class="hdr-menu-item" onclick="closeTblHdrMenu();showTblQrCodes()" style="display:none">🔗 QR codes tables</button>
           <div class="hdr-menu-sep"></div>
           <button class="hdr-menu-item" id="tbl-btn-cloturer" onclick="closeTblHdrMenu();cloturerJournee()" style="display:none">🔒 Clôturer la journée</button>
@@ -3206,8 +3208,6 @@ async function loginSuccess(role){
   if(tblBadge) tblBadge.textContent = u.name;
   const tblDashBtn = document.getElementById('tbl-btn-dash');
   if(tblDashBtn) tblDashBtn.style.display = u.isManager ? '' : 'none';
-  const tblLiveBtn = document.getElementById('tbl-btn-live');
-  if(tblLiveBtn) tblLiveBtn.style.display = u.isManager ? '' : 'none';
   const tblMenuManage = document.getElementById('tbl-btn-menu-manage');
   const tblAjoutFond  = document.getElementById('tbl-btn-ajout-fond');
   const tblPins       = document.getElementById('tbl-btn-pins');
@@ -6612,20 +6612,21 @@ function tblAudit(tbl, action, detail){
   tbl.updatedAt = now;
   saveTables();
   pushTableSyncToCloud();
-  if(typeof window.renderTblOverview === 'function') window.renderTblOverview();
   return entry;
 }
 
+// The in-POS "Vue temps réel — Tables" manager overview + per-table audit
+// viewer that used to live here was removed on purpose — the exact same
+// view (every table live, full per-table history) now lives on the web
+// dashboard (servio.tn/dashboard → onglet 🪑 Tables), reading the SAME
+// cross-till synced data (pos_tables/table_audit_log via /api/me/tables),
+// remotely, without needing a manager physically at the till. Keeping both
+// was pure duplication. tblAuditForTable() itself stays available on
+// window in case another local feature wants a table's history later.
 window.tblAuditForTable = function(tableId){
   return _tableAuditLog.filter(function(e){ return e.tableId===tableId; }).sort(function(a,b){ return a.at-b.at; });
 };
 
-// ═══════════════ MANAGER: LIVE OVERVIEW + AUDIT VIEWER ═══════════════
-// The actual loss-prevention tool: every table, every section, who's on it
-// and since when, at a glance — and one tap into the full paper trail for a
-// table a manager wants to cross-check against camera footage. Refreshes on
-// every local change (tblAudit) and on every cloud pull from other tills
-// (pullTableSync), so it stays live without its own polling loop.
 function tblElapsed(ms){
   if(!ms) return '';
   var s = Math.floor((Date.now()-ms)/1000);
@@ -6633,87 +6634,6 @@ function tblElapsed(ms){
   var h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
   return h>0 ? (h+'h'+String(m).padStart(2,'0')) : (m+'min');
 }
-
-function tblAuditLabel(action){
-  var m = {
-    open:'🟡 Ouverture', item_add:'➕ Article ajouté', item_remove:'➖ Article retiré',
-    sent_kitchen:'🍳 Envoyé en cuisine', bill_printed:'📄 Addition imprimée',
-    paid:'💰 Paiement', closed:'🔒 Table libérée', table_created:'🆕 Table créée',
-    ready:'🔔 Commande prête', served:'✓ Servie / Récupérée',
-  };
-  return m[action] || action;
-}
-
-window.showTblLiveOverview = function(){
-  if(!USERS[currentUser]?.isManager){ alert('Accès réservé au Manager.'); return; }
-  if(typeof pullTableSync === 'function') pullTableSync();
-  renderTblLiveOverview(false);
-};
-
-// Exposed globally (not just called internally) so pushTableSyncToCloud's
-// sibling pullTableSync() and tblAudit() can both refresh this screen if it
-// happens to be open, without either needing to know it exists.
-window.renderTblOverview = function(){
-  if(document.getElementById('tbl-overview-body')) renderTblLiveOverview(true);
-};
-
-function renderTblLiveOverview(refreshOnly){
-  var bySection = {};
-  _tables.forEach(function(t){ (bySection[t.sec] = bySection[t.sec]||[]).push(t); });
-  var activeCount = _tables.filter(function(t){return t.status!=='free';}).length;
-  var totalDT = _tables.reduce(function(s,t){return s+(t.status!=='free'?tblTotal(t):0);},0);
-  var body = Object.keys(bySection).sort().map(function(sec){
-    var rows = bySection[sec].map(function(t){
-      var occ = t.status!=='free';
-      var elapsed = occ ? tblElapsed(t.at) : '';
-      return '<div onclick="showTblAuditView(\''+tblEsc(t.id)+'\')" style="display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid var(--div);cursor:pointer">'+
-        '<div style="width:8px;height:8px;border-radius:50%;flex:none;background:'+(occ?'var(--gold-l)':'var(--div)')+'"></div>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:12px;font-weight:600">Table '+t.num+' <span style="color:var(--muted);font-weight:400">· '+tblStatusLabel(t.status)+'</span></div>'+
-          '<div style="font-size:10px;color:var(--muted)">'+(t.by?('👤 '+t.by+' · '):'')+(elapsed?('🕐 '+elapsed):'—')+'</div>'+
-        '</div>'+
-        (occ?('<div style="font-size:12px;font-weight:700;color:var(--gold-l)">'+tblTotal(t).toFixed(3)+' DT</div>'):'')+
-        '<div style="font-size:14px;color:var(--muted)">›</div>'+
-      '</div>';
-    }).join('');
-    return '<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:4px 2px">'+sec+'</div>'+rows+'</div>';
-  }).join('');
-
-  if(refreshOnly && document.getElementById('tbl-overview-body')){
-    document.getElementById('tbl-overview-body').innerHTML = body;
-    var hdr = document.getElementById('tbl-overview-hdr');
-    if(hdr) hdr.textContent = activeCount+' table(s) active · '+totalDT.toFixed(3)+' DT en cours';
-    return;
-  }
-  createSessionModal(
-    '<div class="session-icon">📡</div>'+
-    '<div class="session-title">Vue temps réel — Tables</div>'+
-    '<div id="tbl-overview-hdr" style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px">'+activeCount+' table(s) active · '+totalDT.toFixed(3)+' DT en cours</div>'+
-    '<div id="tbl-overview-body" style="max-height:360px;overflow-y:auto">'+body+'</div>'+
-    '<button class="mcancel" style="margin-top:12px" onclick="destroySessionModal()">Fermer</button>'
-  );
-}
-
-window.showTblAuditView = function(tableId){
-  var tbl = getTable(tableId);
-  if(!tbl) return;
-  var entries = window.tblAuditForTable(tableId);
-  var rows = entries.length ? entries.slice().reverse().map(function(e){
-    var when = new Date(e.at).toLocaleString('fr-TN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
-    return '<div style="padding:6px 0;border-bottom:1px solid var(--div)">'+
-      '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px"><span style="font-weight:600">'+tblAuditLabel(e.action)+'</span><span style="color:var(--muted);white-space:nowrap">'+when+'</span></div>'+
-      (e.detail?('<div style="font-size:11px;color:var(--muted)">'+e.detail+'</div>'):'')+
-      (e.actor?('<div style="font-size:10px;color:var(--muted)">👤 '+e.actor+'</div>'):'')+
-    '</div>';
-  }).join('') : '<div style="text-align:center;color:var(--muted);padding:16px">Aucune activité enregistrée</div>';
-  createSessionModal(
-    '<div class="session-icon">🧾</div>'+
-    '<div class="session-title">Table '+tbl.num+' — '+tbl.sec+'</div>'+
-    '<div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px">Historique complet — à comparer avec la caméra si besoin</div>'+
-    '<div style="max-height:360px;overflow-y:auto">'+rows+'</div>'+
-    '<button class="mcancel" style="margin-top:12px" onclick="renderTblLiveOverview(false)">← Retour</button>'
-  );
-};
 
 // ── QR-at-table ordering: merge an accepted online order onto its table ──
 // Called from acceptOnlineOrder() (defined earlier in this file, outside
@@ -7085,7 +7005,6 @@ async function _pullTableSyncLocked(){
         localStorage.setItem(AUDIT_KEY, JSON.stringify(_tableAuditLog));
       }catch(e){}
       renderTblGrid();
-      if(typeof window.renderTblOverview === 'function') window.renderTblOverview();
     }
   }catch(e){ /* offline — retried on next poll */ }
 }
