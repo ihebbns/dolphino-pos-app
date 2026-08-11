@@ -3418,6 +3418,10 @@ function encaisser(){
   decreaseStock(od.items);
   // ── background cloud sync (silent, never blocks the POS) ──
   syncSale(od);
+  // Computed BEFORE finalizeOnlineOrderPayment() nulls pendingOnlineOrderPayment —
+  // anything the cashier added to the cart since loading this online order
+  // never printed to the kitchen (see addedKitchenItemsSince).
+  const addedKitchenItems = addedKitchenItemsSince(saleItems);
   // Must run BEFORE the print-checkbox branch — an online order's paid state
   // is data, not a printing preference, and can't depend on a toggle staff
   // may turn off for this one sale.
@@ -3428,7 +3432,7 @@ function encaisser(){
   //    Unchecked → silent: NO save/receipt window, NO print; just open drawer for cash & go to next order
   if(document.getElementById('print-ticket-check')?.checked){
     showReceipt(od);
-    autoPrintAll(od, wasOnlineOrder);
+    autoPrintAll(od, wasOnlineOrder, addedKitchenItems);
     // 2) Kitchen ticket(s) auto-print right after, queued inside autoPrintAll()
   } else {
     // Cash drawer already kicked early at the top of encaisser() (fire-and-forget).
@@ -3461,6 +3465,22 @@ function encaisser(){
 // leaked into the NEXT unrelated sale, silently eating that sale's kitchen
 // ticket and mis-marking the wrong online order as paid. Called BEFORE the
 // print-checkbox branch in every checkout path so it always runs.
+// Items the cashier added to the cart ON TOP of an accepted online order's
+// original items (a new item, or more of one already there) — these never
+// reached the kitchen at accept time, only the order's own items did, so
+// they need their own ticket at checkout. Must be called BEFORE
+// finalizeOnlineOrderPayment() nulls pendingOnlineOrderPayment. Returns
+// null when this isn't an online-order checkout at all (nothing to diff).
+function addedKitchenItemsSince(saleItemsList){
+  const snap = pendingOnlineOrderPayment && pendingOnlineOrderPayment.originalQtyByKey;
+  if(!snap) return null;
+  return saleItemsList.reduce(function(acc,it){
+    const already = snap[it.key]||0;
+    const extra = it.qty - already;
+    if(extra > 0) acc.push(Object.assign({}, it, {qty: extra}));
+    return acc;
+  }, []);
+}
 function finalizeOnlineOrderPayment(){
   if(!pendingOnlineOrderPayment) return null;
   const id = pendingOnlineOrderPayment.id;
@@ -3468,15 +3488,21 @@ function finalizeOnlineOrderPayment(){
   pendingOnlineOrderPayment = null;
   return id; // truthy (a real order id) or null — also stashed on od.onlineOrderId for void() to reverse later
 }
-function autoPrintAll(od, skipKitchen){
+function autoPrintAll(od, skipKitchen, addedKitchenItems){
   // Cash drawer is kicked early (fire-and-forget) at the top of encaisser(),
   // before the SQLite save — so it is intentionally NOT opened here.
   // Client ticket prints immediately and automatically — no manual click needed.
   doPrint();
   if(skipKitchen){
     // This sale is an online order being paid for at the counter — its
-    // kitchen ticket already printed the moment staff hit "Accepter", so
-    // printing it again here would look like a duplicate order to the kitchen.
+    // ORIGINAL items already printed to the kitchen the moment staff hit
+    // "Accepter", so re-sending the whole order here would look like a
+    // duplicate to kitchen staff. If the cashier added anything on top of
+    // it while checking out, though, that part never printed anywhere —
+    // send a ticket for just the difference (see addedKitchenItemsSince).
+    if(addedKitchenItems && addedKitchenItems.length){
+      autoPrintKitchen(Object.assign({}, od, {items: addedKitchenItems}));
+    }
   } else {
     // Kitchen ticket(s) queued right after, staggered so the client ticket
     // reaches the printer first (see delays inside autoPrintKitchen). This is
@@ -4942,9 +4968,10 @@ function confirmCreditSale(idx){
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
   hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
+  const addedKitchenItems = addedKitchenItemsSince(saleItems); // before finalizeOnlineOrderPayment nulls the snapshot — see note in encaisser()
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
   od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
-  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
+  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder, addedKitchenItems); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
   syncSale(od);
@@ -5360,9 +5387,10 @@ function confirmWalletSale(idx){
   if(window.electronAPI?.saveSale)window.electronAPI.saveSale(od);
   hist.push(od);daily+=g;lastOrderData=od;if(onlineNum==null) orderNum = Math.max(orderNum, currentOrderNum) + 1;
   currentOrderNum = orderNum;
+  const addedKitchenItems = addedKitchenItemsSince(saleItems); // before finalizeOnlineOrderPayment nulls the snapshot — see note in encaisser()
   const wasOnlineOrder=finalizeOnlineOrderPayment(); // before the print-checkbox branch — see note in encaisser()
   od.onlineOrderId = wasOnlineOrder; // read by confirmVoidSale() to reverse the online order's paid flag
-  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder); }
+  if(document.getElementById('print-ticket-check')?.checked){ showReceipt(od); autoPrintAll(od, wasOnlineOrder, addedKitchenItems); }
   document.getElementById('dt').textContent='Ventes du jour : '+f(daily)+' DT';
   decreaseStock(od.items);
   syncSale(od);
@@ -5754,9 +5782,13 @@ async function encaisserOnlineOrder(id){
   }
   items = (order.items_json||[]).map(it=>({
     key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
-    variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat:''
+    variant: it.variant||'', qty: Math.max(1,parseInt(it.qty)||1), note:'', cat: it.cat||''
   }));
   disc=0; payMode='cash';
+  // Snapshot of qty-per-key at load time — anything the cashier adds ON TOP
+  // of this before finalizing (a new item, or MORE of one already here)
+  // never reached the kitchen at accept time (only these original items
+  // did) and needs its own ticket at checkout — see addedKitchenItemsSince().
   setType(order.order_type==='livraison'?'del':(order.order_type==='emporter'?'take':'place'));
   cliName = order.client_name||''; cliTel = order.client_phone||'';
   const cn=document.getElementById('cli-name'), ct=document.getElementById('cli-tel');
@@ -5766,7 +5798,8 @@ async function encaisserOnlineOrder(id){
   // checkout) instead of drawing a fresh one from the till's own counter —
   // that mismatch (customer told "#3", receipt says "#47") was the actual
   // bug report this fixes.
-  pendingOnlineOrderPayment = { id: order.id, dailyNum: order.daily_num, source: order.source };
+  pendingOnlineOrderPayment = { id: order.id, dailyNum: order.daily_num, source: order.source,
+    originalQtyByKey: Object.fromEntries(items.map(it=>[it.key, it.qty])) };
   // The header must show THIS order's own number the instant it's loaded —
   // leaving it on the till's generic next-counter number (e.g. "#3") while
   // the cart actually holds order #502 is exactly the two-different-numbers
