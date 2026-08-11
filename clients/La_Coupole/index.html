@@ -451,18 +451,6 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn{-webkit-tap-highlight-co
   </div>
 </header>
 
-<!-- Ready-for-pickup notification bar — kitchen finished an order (see
-     pollOnlineOrders' onlineOrdersReady) but nothing in the till itself
-     used to say so; a cashier only found out from the physical pickup
-     board or the kitchen shouting. In normal document flow (not fixed)
-     so it never fights with print-fail-banner above for the same strip
-     of screen — it just pushes #main down while it's showing. -->
-<div id="ready-orders-bar" style="display:none;background:linear-gradient(135deg,#16A34A,#22C55E);color:#fff;padding:9px 16px;font-size:12px;font-weight:700;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.15)">
-  <span>✅</span>
-  <span id="ready-orders-bar-msg"></span>
-  <button onclick="dismissReadyOrdersBar()" style="background:rgba(255,255,255,.22);border:none;border-radius:6px;color:#fff;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">OK</button>
-</div>
-
 <!-- ══ MAIN ══ -->
 <div id="main" style="display:none">
 
@@ -3660,19 +3648,14 @@ window.hideKdsOverlay = function(){
   if(_kdsTimer){ clearInterval(_kdsTimer); _kdsTimer = null; }
 };
 
-// Same server call as markOnlineOrderReady, but silent — used when the KDS
-// bump itself is what proved the order's ready (see kdsBump below), which
-// can fire while a cashier is mid-checkout on a completely different sale.
-// Popping the "Commandes en ligne" modal open under them would be
-// disruptive; the kds-badge/next poll is the correct place for this to surface.
-async function _kdsMarkOnlineOrderReadySilent(id){
-  const ok = await postOnlineOrderAction(id,'markReady');
-  if(!ok) return;
-  onlineOrdersPreparing = onlineOrdersPreparing.filter(o=>String(o.id)!==String(id));
-  updateOnlineOrdersBadge();
-}
-
 window.kdsBump = function(id){
+  // Kitchen-internal only, on purpose — bumping every ticket for an order
+  // means "done cooking," nothing more. It does NOT auto-notify the
+  // customer or touch the pickup board: the cashier makes that call
+  // explicitly via "✅ Marquer prêt" in Commandes en ligne (see
+  // showOnlineOrders' kitchenStatusTag, right next to that button, which
+  // reads t.onlineOrderId/bumped state from here to show the cashier
+  // whether kitchen is actually done before they release the order).
   var t = _kdsTickets.find(function(x){ return x.id===id; });
   if(!t) return;
   t.bumped = true; t.bumpedAt = Date.now();
@@ -3680,18 +3663,6 @@ window.kdsBump = function(id){
   updateKdsBadge();
   renderKdsScreen();
   pushKdsBump(id);
-  // Every ticket for this order-num bumped → nothing still cooking. Only
-  // matters for real online orders — t.onlineOrderId is the order's actual
-  // online_orders.id (set in kdsAddTicket from printOnlineOrderKitchenTicket),
-  // NOT parsed back out of the display num, which since daily_num became the
-  // displayed number ('WEB502') is a small per-day counter, not the real id —
-  // parsing it as if it were the id silently called markReady on the wrong
-  // (usually nonexistent) order every time. A regular in-store sale's ticket
-  // has nothing waiting on it once bumped (onlineOrderId stays null).
-  var stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.num===t.num; });
-  if(!stillPending && t.onlineOrderId && typeof _kdsMarkOnlineOrderReadySilent==='function'){
-    _kdsMarkOnlineOrderReadySilent(t.onlineOrderId);
-  }
 };
 
 window.renderKdsScreen = function(){
@@ -5449,10 +5420,6 @@ let pendingOnlineOrderPayment = null;
 // order waiting while nobody was watching still deserves an alert), while a
 // replayed/unchanged poll never re-alerts for the same order twice.
 let _prevPendingOrderIds = new Set();
-// Orders the kitchen has finished (ready=TRUE) — see the "ready" list added
-// to /api/me/online-orders. Diffed the same way as pending orders, below.
-let onlineOrdersReady = [];
-let _prevReadyOrderIds = new Set();
 async function pollOnlineOrders(){
   if(!SYNC_ENABLED || !isOnlineOrdersEnabled()) return;
   try{
@@ -5464,7 +5431,6 @@ async function pollOnlineOrders(){
     onlineOrdersPending = Array.isArray(data.pending) ? data.pending : [];
     onlineOrdersUnpaid = Array.isArray(data.unpaid) ? data.unpaid : [];
     onlineOrdersPreparing = Array.isArray(data.preparing) ? data.preparing : [];
-    onlineOrdersReady = Array.isArray(data.ready) ? data.ready : [];
     updateOnlineOrdersBadge();
     const currentIds = new Set(onlineOrdersPending.map(o=>String(o.id)));
     const freshOnes = onlineOrdersPending.filter(o=>!_prevPendingOrderIds.has(String(o.id)));
@@ -5485,38 +5451,7 @@ async function pollOnlineOrders(){
       });
     }
     _prevPendingOrderIds = currentIds;
-    updateReadyOrdersBar();
-    const readyCurrentIds = new Set(onlineOrdersReady.map(o=>String(o.id)));
-    const freshReady = onlineOrdersReady.filter(o=>!_prevReadyOrderIds.has(String(o.id)));
-    if(freshReady.length) playOrderChime();
-    _prevReadyOrderIds = readyCurrentIds;
   }catch(e){ /* offline — retried on next poll */ }
-}
-// Cashier can dismiss the bar for THIS poll cycle without the order itself
-// changing state server-side — it just comes back the next time a truly
-// NEW order becomes ready (see the id-diffing above), same as re-showing
-// after a page reload. Not a "seen it forever" flag on purpose: a missed
-// pickup staying visible is safer than one silently going quiet.
-let _readyBarDismissedFor = '';
-function dismissReadyOrdersBar(){
-  _readyBarDismissedFor = onlineOrdersReady.map(o=>o.id).join(',');
-  const bar = document.getElementById('ready-orders-bar');
-  if(bar) bar.style.display = 'none';
-}
-function updateReadyOrdersBar(){
-  const bar = document.getElementById('ready-orders-bar');
-  const msg = document.getElementById('ready-orders-bar-msg');
-  if(!bar || !msg) return;
-  const key = onlineOrdersReady.map(o=>o.id).join(',');
-  if(!onlineOrdersReady.length){ bar.style.display='none'; return; }
-  if(key === _readyBarDismissedFor){ bar.style.display='none'; return; }
-  const labels = onlineOrdersReady.slice(0,4).map(o=>{
-    const num = o.daily_num!=null ? o.daily_num : o.id;
-    return '#'+num+(o.client_name?' — '+o.client_name:'');
-  });
-  const extra = onlineOrdersReady.length>4 ? ' +'+(onlineOrdersReady.length-4) : '';
-  msg.textContent = (onlineOrdersReady.length>1?'Commandes prêtes : ':'Commande prête : ')+labels.join(', ')+extra;
-  bar.style.display='flex';
 }
 function updateOnlineOrdersBadge(){
   const b = document.getElementById('ooo-badge');
@@ -5562,6 +5497,20 @@ function showNewOrderToast(order){
   el.querySelector('button').onclick = () => { showOnlineOrders(); el.remove(); };
   stack.appendChild(el);
   setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 14000);
+}
+// Purely informational — tells the cashier whether kitchen has actually
+// bumped this order's ticket(s) yet, right next to "Marquer prêt". Never
+// triggers anything on its own; the cashier still makes the call.
+function kitchenStatusTag(o){
+  if(o.daily_num==null) return '';
+  const prefix = o.source==='kiosk' ? 'KIO' : 'WEB';
+  const num = prefix + String(o.daily_num).padStart(3,'0');
+  const tickets = _kdsTickets.filter(t=>t.num===num);
+  if(!tickets.length) return '';
+  const allBumped = tickets.every(t=>t.bumped);
+  return allBumped
+    ? ' · <span style="color:var(--green)">✅ Cuisine terminée</span>'
+    : ' · <span style="color:var(--orange)">🔥 En cuisine</span>';
 }
 function showOnlineOrders(){
   const rows = onlineOrdersPending.length ? onlineOrdersPending.map(o=>{
@@ -5610,8 +5559,17 @@ function showOnlineOrders(){
 
   const preparingRows = onlineOrdersPreparing.length ? onlineOrdersPreparing.map(o=>{
     const typeLabel = o.order_type==='livraison'?'🛵 Livraison':(o.order_type==='emporter'?'🥡 Emporter':'🏠 Sur place');
+    // Informational only — this is what actually answers "I need to SEE
+    // that kitchen is done" without anything auto-triggering. Matches this
+    // order's own kitchen ticket(s) by num (KIO/WEB+daily_num, same
+    // convention as printOnlineOrderKitchenTicket) against this till's own
+    // known tickets. No tickets found at all for a "screen" mode restaurant
+    // usually just means the poll hasn't caught up yet; for a "ticket"-only
+    // restaurant (see kitchenOutputMode) it's the normal, permanent state —
+    // no tag shown, staff use their own judgment same as always.
+    const kitchenTag = kitchenStatusTag(o);
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--div)">
-      <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel}${o.paid?' · <span style="color:var(--green)">payée</span>':''}</span>
+      <span style="font-size:12px"><strong>${o.client_name}</strong> — ${typeLabel}${o.paid?' · <span style="color:var(--green)">payée</span>':''}${kitchenTag}</span>
       <button onclick="markOnlineOrderReady(${o.id})" style="padding:6px 12px;background:var(--card);border:1px solid rgba(61,184,122,.4);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">✅ Marquer prêt</button>
     </div>`;
   }).join('') : '';
