@@ -569,7 +569,6 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
              no cash is arriving now. Hidden otherwise so it can't be used
              for an ordinary order, where "already paid" makes no sense. -->
         <button class="pb" id="p-settled" onclick="selPay('settled',this)" style="display:none"><span class="pi">✅</span>Déjà réglée</button>
-        <button class="pb" id="p-ticket" onclick="selPay('ticket',this)"><span class="pi">🎫</span>Ticket Restau</button>
       </div>
       <div id="cs">
         <div class="ci-row"><span class="ci-lbl">Reçu (DT)</span><input class="ci" type="number" id="cr" placeholder="0.000" step="0.001" oninput="calcM()" onfocus="this.select()" inputmode="decimal" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false"></div>
@@ -6498,6 +6497,14 @@ async function encaisserOnlineOrder(id){
   if(items.length && !confirm('Le panier en cours sera remplacé par la commande de '+order.client_name+'. Continuer ?')){
     postOnlineOrderAction(id,'release'); // claimed but not used — give it back immediately
     return;
+  }
+  // This order has no table (moi/kiosk pickup) — if the till still had an
+  // active table from earlier (e.g. left over from before touching this
+  // order), loading a fresh cart on top of it without detaching left
+  // encaisser()/updateTblBar() thinking THIS order belonged to that table,
+  // wrongly forcing it through Addition/Envoyer. See tblGoNoTable().
+  if(!order.table_num && typeof window.tblActiveTable==='function' && window.tblActiveTable() && typeof window.tblGoNoTable==='function'){
+    window.tblGoNoTable();
   }
   items = (order.items_json||[]).map(it=>({
     key: it.id+(it.variant||''), id: it.id, name: it.name, p: Number(it.p)||0, e: it.e||'🍽️',
