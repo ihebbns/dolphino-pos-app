@@ -477,7 +477,6 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
     <button class="hdr-btn" id="btn-tables" onclick="showTblOverlay()" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold-l);font-weight:700">🍽️ Tables</button>
     <button class="hdr-btn" id="btn-online-orders" onclick="showOnlineOrders()" style="display:none">🌐 Commandes<span id="ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn" onclick="showKdsOverlay()">🖥️ Cuisine<span id="kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
-    <button class="hdr-btn" onclick="showReadyBoard()">🔔 Prêtes<span id="ready-board-badge" style="display:none;margin-left:5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
     <button class="hdr-btn hdr-icon" onclick="toggleTheme()" id="btn-theme" title="Mode clair/sombre">🌙</button>
     <div class="hdr-menu-wrap">
       <button class="hdr-btn hdr-icon" onclick="toggleHdrMenu(event)" title="Menu">☰</button>
@@ -709,7 +708,6 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
       <button class="hdr-btn" onclick="window.tblGoNoTable()">🥡 Sans table</button>
       <button class="hdr-btn" id="tbl-btn-online-orders" onclick="showOnlineOrders()" style="display:none">🌐<span id="tbl-ooo-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn" onclick="showKdsOverlay()">🖥️<span id="tbl-kds-badge" style="display:none;margin-left:5px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
-      <button class="hdr-btn" onclick="showReadyBoard()">🔔<span id="tbl-ready-board-badge" style="display:none;margin-left:5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;"></span></button>
       <button class="hdr-btn hdr-icon" onclick="toggleTheme()" title="Mode clair/sombre">🌙</button>
       <div class="hdr-menu-wrap">
         <button class="hdr-btn hdr-icon" onclick="toggleTblHdrMenu(event)" title="Menu">☰</button>
@@ -762,28 +760,8 @@ button,.pc,.cat-btn,.pin-btn,.user-card,.pb,.db,.ot-btn,.tbl-card,[onclick]{-web
   <div id="kds-zone-tabs" style="display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--div);flex-wrap:wrap"></div>
   <div id="kds-grid" style="flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start"></div>
 </div>
-<div id="ready-board-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:210;flex-direction:column;overflow:hidden">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--div);background:var(--card)">
-    <div style="font-size:16px;font-weight:800;color:var(--gold-l)">🔔 Commandes prêtes</div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <!-- Whether the customer walks up to get it or a server brings it out
-           only changes the label on the clear button below — the manager
-           picks whichever matches how this place actually runs. -->
-      <select id="ready-board-mode" onchange="window.setPickupMode(this.value)" style="background:var(--card);border:1px solid var(--div);border-radius:6px;padding:6px 8px;color:var(--txt);font-size:12px">
-        <option value="server">🧑‍🍳 Le serveur apporte</option>
-        <option value="self">🚶 Le client vient chercher</option>
-      </select>
-      <button class="hdr-btn" onclick="hideReadyBoard()">✕ Fermer</button>
-    </div>
-  </div>
-  <div id="ready-board-grid" style="flex:1;overflow-y:auto;padding:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;align-content:start"></div>
-</div>
 <div id="tbl-bar">
   <button class="tbl-bar-btn" onclick="tblSendKitchen()" style="background:var(--green);color:#fff">🍳 Envoyer</button>
-  <!-- Manual fallback for a kitchen that works from paper tickets only, with
-       no KDS screen to tap "done" on — this table can still be marked ready
-       and show up on the ready-board (see showReadyBoard/tblMarkReadyManual). -->
-  <button class="tbl-bar-btn" onclick="window.tblMarkReadyManual()" style="background:var(--card);border-top:1px solid var(--div);color:var(--green)">🔔 Prêt</button>
   <button class="tbl-bar-btn" onclick="tblPrintAddition()" style="background:var(--orange);color:#fff">📄 Addition</button>
   <button class="tbl-bar-btn" onclick="showSplitBill()" style="background:var(--card);border-top:1px solid var(--div);color:var(--muted)">➗ Diviser</button>
   <button class="tbl-bar-btn" onclick="window.tblStartTransfer()" style="background:var(--card);border-top:1px solid var(--div);color:var(--muted)">🔄 Transférer</button>
@@ -3918,52 +3896,12 @@ window.kdsBump = function(id){
   updateKdsBadge();
   renderKdsScreen();
   pushKdsBump(id);
-  // This is the diagram's "cuisine touches order OK" step — once every zone's
-  // ticket for a given table/order is bumped, nothing is still cooking, so the
-  // customer/staff-facing Ready-Board can light up. A table can have several
-  // tickets (one per zone: bar + cuisine) so only flip to ready once ALL of
-  // them are done, not on the first bump.
-  var stillPending;
-  if(t.tblNum){
-    stillPending = _kdsTickets.some(function(x){ return !x.bumped && x.tblNum===t.tblNum && x.tblSec===t.tblSec; });
-    // Kitchen-internal only, same rule as the non-table branch below — bumping
-    // every ticket for a table means "done cooking," nothing more. It does
-    // NOT auto-mark the table ready or touch the ready-board on its own; the
-    // cashier makes that call explicitly with the "🔔 Prêt" button on the
-    // table bar (tblMarkReadyManual) — same "kitchen bump ≠ customer-facing
-    // ready" rule established for online orders (see kitchenStatusTag). This
-    // only flips a staff-facing marker so the floor-plan card can show the
-    // kitchen is done and the cashier knows to go press it.
-    if(!stillPending){
-      var kTbl = _tables.find(function(x){ return x.num===Number(t.tblNum) && x.sec===t.tblSec; });
-      if(kTbl && !kTbl.readyForPickup && !kTbl.kitchenDone){
-        kTbl.kitchenDone = true;
-        saveTables();
-        renderTblGrid();
-      }
-    }
-  }else{
-    stillPending = _kdsTickets.some(function(x){ return !x.bumped && !x.tblNum && x.num===t.num; });
-    // Kitchen-internal only, on purpose — bumping every ticket for a
-    // non-table order means "done cooking," nothing more. It does NOT
-    // auto-notify the customer or touch the public pickup board (see
-    // /api/public/[slug]/ready-orders): the cashier makes that call
-    // explicitly via "✅ Marquer prêt" in Commandes en ligne (see
-    // showOnlineOrders' kitchenStatusTag, right next to that button, which
-    // reads this same _kdsTickets state to show whether kitchen is done
-    // before staff release the order). Still updates the till's own local
-    // pickup widget below — that's staff-facing visibility, not a customer
-    // notification, same category as kitchenStatusTag.
-    var realId = (typeof t.num==='string' && t.num.slice(0,3)==='WEB') ? parseInt(t.num.slice(3),10) : null;
-    if(!stillPending && realId){
-      window._readyPickupOrders = window._readyPickupOrders || [];
-      if(!window._readyPickupOrders.some(function(o){ return o.id===realId; })){
-        window._readyPickupOrders.push({id:realId, client_name:t.cliName||'', readyAt:Date.now()});
-      }
-      if(typeof _tblUpdateReadyBadge==='function') _tblUpdateReadyBadge();
-      if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-    }
-  }
+  // Bumping a ticket means "done cooking," an internal kitchen signal only —
+  // it never notifies the customer on its own. For a table, food is carried
+  // over by staff (nothing to release). For a non-table order, the cashier's
+  // explicit "✅ Marquer prêt" in Commandes en ligne is what actually lights
+  // up the customer-facing board (see kitchenStatusTag + /api/public/[slug]/
+  // ready-orders) — this handler doesn't need to do anything more.
 };
 
 // Lets one physical screen sit in the kitchen filtered to just CUISINE and
@@ -6200,8 +6138,8 @@ function showNewOrderToast(order){
 // Purely informational — tells the cashier whether kitchen has actually
 // bumped this order's ticket(s) yet, right next to "Marquer prêt". Never
 // triggers anything on its own; the cashier still makes the call. Only
-// meaningful for a non-table order (KIO/WEB-prefixed num) — a table order's
-// own ready flow is driven by tblMarkReady in kdsBump, not this.
+// meaningful for a non-table order (KIO/WEB-prefixed num) — a table order
+// has no equivalent signal, food is carried over by staff directly.
 function kitchenStatusTag(o){
   if(o.table_num || o.daily_num==null) return '';
   const prefix = o.source==='kiosk' ? 'KIO' : 'WEB';
@@ -6756,144 +6694,13 @@ window.tblGoToTableByNum = function(num, sec){
   window.tblGoToTable(tbl.id);
 };
 
-// ── Ready-Board: order readiness signaling ────────────────────────────
-// Every kitchen/bar can be paper-only, screen-only, or mixed — the owner
-// picks, we don't assume. Whatever gets an order to "ready" (a KDS bump
-// with nothing left pending, or the manual 🔔 button for paper kitchens),
-// it lands here as one shared signal so staff/customers know to act on it.
-// pickupMode controls the label only ('server' = staff brings it to the
-// table, 'self' = customer/table watches the board and comes get it).
-window.getPickupMode = function(){
-  return localStorage.getItem('servio-pickup-mode-v1') || 'server';
-};
-window.setPickupMode = function(mode){
-  mode = (mode==='self') ? 'self' : 'server';
-  localStorage.setItem('servio-pickup-mode-v1', mode);
-  var sel = document.getElementById('ready-board-mode');
-  if(sel) sel.value = mode;
-  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-};
-
-function _tblUpdateReadyBadge(){
-  var readyTables = _tables.filter(function(t){ return t.readyForPickup; }).length;
-  var readyPickup = (window._readyPickupOrders||[]).length;
-  var n = readyTables + readyPickup;
-  ['ready-board-badge','tbl-ready-board-badge'].forEach(function(id){
-    var el = document.getElementById(id);
-    if(!el) return;
-    el.textContent = n>0 ? String(n) : '';
-    el.style.display = n>0 ? 'inline-block' : 'none';
-  });
-}
-
-// Called once a table's order is genuinely ready (either the last pending
-// KDS ticket for it got bumped, or staff mark it ready manually on a paper
-// ticket). Idempotent — bumping a second zone's ticket for an already-ready
-// table just no-ops.
-window.tblMarkReady = function(num, sec){
-  var tbl = _tables.find(function(t){ return t.num===Number(num) && t.sec===sec; });
-  if(!tbl || tbl.readyForPickup) return;
-  tbl.readyForPickup = true;
-  tbl.readyAt = Date.now();
-  tblAudit(tbl, 'ready', '🔔 Commande prête ('+(window.getPickupMode()==='self' ? 'client à récupérer' : 'à apporter')+')');
-  saveTables();
-  renderTblGrid();
-  _tblUpdateReadyBadge();
-  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-};
-
-// Fallback for paper-ticket kitchens with no KDS screen at all — staff taps
-// this on the table itself once the order's physically ready.
-window.tblMarkReadyManual = function(){
-  var tbl = getTable(_activeTable);
-  if(!tbl){ flash('⚠ Aucune table sélectionnée'); return; }
-  if(tbl.readyForPickup){ flash('Déjà marquée prête'); return; }
-  tbl.readyForPickup = true;
-  tbl.readyAt = Date.now();
-  tblAudit(tbl, 'ready', '🔔 Commande prête (marquée manuellement)');
-  saveTables();
-  renderTblGrid();
-  _tblUpdateReadyBadge();
-  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-  flash('🔔 Table '+tbl.num+' marquée prête');
-};
-
-// Order actually delivered/collected — clears the ready flag and closes the
-// loop with an audit entry distinct from 'ready' so the trail shows both
-// the moment it was cooked and the moment it reached the customer.
-window.tblMarkServed = function(tableId){
-  var tbl = getTable(tableId);
-  if(!tbl || !tbl.readyForPickup) return;
-  tbl.readyForPickup = false;
-  tbl.readyAt = null;
-  tblAudit(tbl, 'served', window.getPickupMode()==='self' ? '✓ Récupérée par le client' : '✓ Servie par le personnel');
-  saveTables();
-  renderTblGrid();
-  _tblUpdateReadyBadge();
-  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-};
-
-// Non-table (pickup/takeaway/kiosk) orders share the same board once ready —
-// no table to flag, so they live in this small array instead.
-window._readyPickupOrders = window._readyPickupOrders || [];
-window.clearReadyPickupOrder = function(id){
-  window._readyPickupOrders = window._readyPickupOrders.filter(function(o){ return o.id!==id; });
-  _tblUpdateReadyBadge();
-  if(typeof window.renderReadyBoard==='function') window.renderReadyBoard();
-};
-
-window.showReadyBoard = function(){
-  var ov = document.getElementById('ready-board-overlay');
-  if(!ov) return;
-  ov.style.display = 'flex';
-  var sel = document.getElementById('ready-board-mode');
-  if(sel) sel.value = window.getPickupMode();
-  window.renderReadyBoard();
-  if(window._readyBoardTimer) clearInterval(window._readyBoardTimer);
-  window._readyBoardTimer = setInterval(window.renderReadyBoard, 15000);
-};
-window.hideReadyBoard = function(){
-  var ov = document.getElementById('ready-board-overlay');
-  if(ov) ov.style.display = 'none';
-  if(window._readyBoardTimer){ clearInterval(window._readyBoardTimer); window._readyBoardTimer = null; }
-};
-
-function _tblElapsedMin(ts){
-  if(!ts) return 0;
-  return Math.max(0, Math.round((Date.now()-ts)/60000));
-}
-
-window.renderReadyBoard = function(){
-  var grid = document.getElementById('ready-board-grid');
-  if(!grid) return;
-  var mode = window.getPickupMode();
-  var btnLabel = mode==='self' ? '✓ Récupéré' : '✓ Apporté';
-  var readyTables = _tables.filter(function(t){ return t.readyForPickup; });
-  var pickupOrders = window._readyPickupOrders||[];
-  if(!readyTables.length && !pickupOrders.length){
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px 0">Aucune commande prête pour le moment</div>';
-    _tblUpdateReadyBadge();
-    return;
-  }
-  var cards = readyTables.map(function(t){
-    return '<div style="background:var(--card);border:2px solid var(--green);border-radius:12px;padding:18px;text-align:center">'+
-      '<div style="font-size:28px;font-weight:800">Table '+t.num+'</div>'+
-      (t.sec ? '<div style="color:var(--muted);font-size:12px;margin-bottom:6px">'+t.sec+'</div>' : '')+
-      '<div style="color:var(--green);font-size:12px;margin-bottom:12px">🔔 Prête depuis '+_tblElapsedMin(t.readyAt)+' min</div>'+
-      '<button class="mconfirm" style="width:100%" onclick="window.tblMarkServed(\''+t.id+'\')">'+btnLabel+'</button>'+
-    '</div>';
-  }).join('');
-  cards += pickupOrders.map(function(o){
-    return '<div style="background:var(--card);border:2px solid var(--green);border-radius:12px;padding:18px;text-align:center">'+
-      '<div style="font-size:20px;font-weight:800">'+(o.client_name||('Commande #'+o.id))+'</div>'+
-      '<div style="color:var(--muted);font-size:12px;margin-bottom:6px">À emporter</div>'+
-      '<div style="color:var(--green);font-size:12px;margin-bottom:12px">🔔 Prête depuis '+_tblElapsedMin(o.readyAt)+' min</div>'+
-      '<button class="mconfirm" style="width:100%" onclick="window.clearReadyPickupOrder('+o.id+')">✓ Récupéré</button>'+
-    '</div>';
-  }).join('');
-  grid.innerHTML = cards;
-  _tblUpdateReadyBadge();
-};
+// The in-till Ready-Board overlay (and the local "🔔 Prêt" table button that
+// fed it) was removed on purpose — it never actually notified the customer
+// of anything on its own, and the real customer-facing ready board now
+// lives on the web (servio.tn/ready/<slug>, reading online_orders.ready,
+// set via "✅ Marquer prêt" in Commandes en ligne — see kitchenStatusTag).
+// A table's food is carried over by staff directly; there was never a
+// customer-facing signal for it to release in the first place.
 
 // ── Manager: per-table QR ordering links ──────────────────────────────
 // Each table's QR encodes CLIENT_CONFIG.publicSlug + this table's num/sec —
@@ -7170,11 +6977,6 @@ function renderTblGrid(){
               tbl.status==='sent'?'<div class="tbl-dot tbl-dot-green"></div>':
               tbl.status==='bill'?'<div class="tbl-dot tbl-dot-orange"></div>':'';
     var badge = tbl.items.length>0?'<div class="tbl-badge">'+tbl.items.length+'</div>':'';
-    // Staff-facing only — never auto-triggers anything, the cashier still has
-    // to tap "🔔 Prêt" on the table bar. Without this the manual button's only
-    // feedback was a 2.5s toast, which read as "did nothing" once it faded.
-    var readyMark = tbl.readyForPickup ? '<div class="tbl-ready-mark" style="position:absolute;top:6px;right:6px;font-size:16px" title="Prête — à servir">🔔</div>'
-                    : tbl.kitchenDone ? '<div class="tbl-ready-mark" style="position:absolute;top:6px;right:6px;font-size:16px" title="Cuisine terminée — pas encore marquée prête">✅</div>' : '';
     var tot = tbl.status!=='free'?'<div class="tbl-tot">'+tblTotal(tbl).toFixed(3)+' DT</div>':'';
     var sub = tbl.status!=='free'?'<div class="tbl-sub">'+tblStatusLabel(tbl.status)+'</div>':'<div class="tbl-sub">'+tbl.sec+'</div>';
     var foot = '';
@@ -7183,7 +6985,7 @@ function renderTblGrid(){
       foot = '<div class="tbl-foot">'+(elapsedStr?'<span>🕐 '+elapsedStr+'</span>':'')+
              '<span class="tbl-who"><span class="tbl-av">'+(tbl.by.charAt(0)||'?')+'</span>'+tbl.by+'</span></div>';
     }
-    return '<div class="'+cls+'" onclick="window._tblSelect(\''+tblEsc(tbl.id)+'\')">'+dot+badge+readyMark+'<div class="tbl-icon">🍽️</div><div class="tbl-num">Table '+tbl.num+'</div>'+sub+tot+foot+'</div>';
+    return '<div class="'+cls+'" onclick="window._tblSelect(\''+tblEsc(tbl.id)+'\')">'+dot+badge+'<div class="tbl-icon">🍽️</div><div class="tbl-num">Table '+tbl.num+'</div>'+sub+tot+foot+'</div>';
   }).join('');
 }
 
@@ -7455,7 +7257,6 @@ window.tblSendKitchen = function(){
   };
   if(typeof autoPrintKitchen === 'function') autoPrintKitchen(od);
   tbl.status = 'sent';
-  tbl.kitchenDone = false; // fresh items just went to kitchen — any earlier "done" marker no longer holds
   tbl.sentItems = items.map(function(it){ return {key:it.key, qty:it.qty}; });
   tblAudit(tbl, 'sent_kitchen', newItems.map(function(it){ return it.qty+'x '+it.name; }).join(', '));
   saveTables();
